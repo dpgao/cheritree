@@ -4,10 +4,9 @@
  *  Copyright (c) 2023, rtegrity ltd. All rights reserved.
  */
 
+#include <cheri/cheric.h>
+
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <inttypes.h>
 #include <limits.h>
 #include <string.h>
 #include "mapping.h"
@@ -51,7 +50,7 @@ void cheritree_set_mapping_name(mapping_t *mapping,
 
     if (owner && *owner)
         sprintf(buf, "[%s!%s]", owner, name);
-    
+
     else sprintf(buf, "[%s]", name);
     setname(mapping, buf);
 }
@@ -204,7 +203,7 @@ static void load_mappings()
 
     if (!cheritree_load_from_cmd(cmd, load_mapping, &v)) {
         fprintf(stderr, "Unable to load mappings");
-        exit(1);        
+        exit(1);
     }
 
     cheritree_vec_delete(&mappings);
@@ -261,7 +260,7 @@ static void load_mappings()
 
     if (!cheritree_load_from_path(path, load_mapping, &v)) {
         fprintf(stderr, "Unable to load mappings");
-        exit(1);        
+        exit(1);
     }
 
     cheritree_vec_delete(&mappings);
@@ -315,9 +314,9 @@ int cheritree_dereference_address(void ***pptr, void **paddr)
 
     if (!mapping) return 0;
 
-    if (getprot(mapping) == CT_PROT_NONE) {
-        *(char **)pptr += (mapping->end - sizeof(void *)) - (addr_t)*pptr;
-         return 0;
+    if ((getprot(mapping) & CT_PROT_READ_CAP) == 0) {
+        *pptr = cheri_setaddress(*pptr, mapping->end);
+        return 0;
     }
 
     *paddr = **pptr;

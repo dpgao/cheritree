@@ -19,15 +19,11 @@ static vec_t strings;
 static int load_vec(FILE *fp,
     int (loadelement)(char *line, vec_t *v), vec_t *v)
 {
-    while (fp != NULL) {
-        char buffer[2048];
+    char buffer[2048];
 
-        if (fgets(buffer, sizeof(buffer), fp) == NULL)
-            break;
-
+    while (fgets(buffer, sizeof(buffer), fp) != NULL)
         if (!loadelement(buffer, v))
             break;
-    }
 
     cheritree_vec_trim(v);
     return (v->addr != NULL);
@@ -126,7 +122,7 @@ int cheritree_map_find(map_t *v, addr_t addr, range_t *prange)
             *prange = range[i];
             return 1;
         }
-        
+
         if (addr <= range[i].end) break;
     }
 
@@ -173,7 +169,7 @@ string_t cheritree_string_alloc(const char *s)
 
     if (!strings.addr)
         cheritree_vec_init(&strings, sizeof(char), 64 * 1024);
- 
+
     addr = cheritree_vec_alloc(&strings, strlen(s) + 1);
 
     return (string_t)(strcpy(addr, s) - strings.addr + 1);

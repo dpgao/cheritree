@@ -1,8 +1,6 @@
 INCLUDES=-Iexample/lib1 -Iexample/lib2 -Isrc -I../src
-CFLAGS=-march=morello -mabi=purecap -g $(INCLUDES) -Wl,-Bsymbolic
+CFLAGS=-march=morello -mabi=purecap -g $(INCLUDES) -Wl,-Bsymbolic -Wl,-rpath=.
 # CFLAGS=-march=morello -mabi=aapcs -g $(INCLUDES)
-C18NFLAGS=-Wl,--dynamic-linker=/libexec/ld-elf-c18n.so.1
-#C18NFLAGS=-Wl,--dynamic-linker=$(HOME)/ld-elf-c18n.so.1
 
 rebuild: clean all
 
@@ -10,9 +8,11 @@ all:	shared-example c18n-example
 
 shared-example:	example/main.c lib1.so lib2.so lib3.so cheritree.so cheritreestub.a
 	cc $(CFLAGS) -rdynamic example/main.c cheritreestub.a -o shared-example lib1.so lib2.so cheritree.so
+	elfctl -e +nocheric18n shared-example
 
 c18n-example:	example/main.c lib1.so lib2.so lib3.so cheritree.so cheritreestub.a
-	cc $(CFLAGS) -rdynamic $(C18NFLAGS) example/main.c cheritreestub.a -o c18n-example lib1.so lib2.so cheritree.so
+	cc $(CFLAGS) -rdynamic example/main.c cheritreestub.a -o c18n-example lib1.so lib2.so cheritree.so
+	elfctl -e +cheric18n c18n-example
 
 cheritree.so: src/cheritree.c src/mapping.c src/symbol.c \
 		src/util.c src/stubs.S cheritreestub.a

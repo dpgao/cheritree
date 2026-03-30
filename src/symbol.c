@@ -73,7 +73,7 @@ static int load_symbol(char *buffer, vec_t *v)
 void cheritree_load_symbols(const char *path)
 {
     char cmd[2048];
- 
+
     if (images.addr == 0)
         cheritree_vec_init(&images, sizeof(image_t), 1024);
 
@@ -97,31 +97,6 @@ void cheritree_load_symbols(const char *path)
 }
 
 
-const char *cheritree_find_type(const char *path,
-    addr_t base, addr_t start, addr_t end)
-{
-    const image_t *image = find_image(path);
-    int i;
-
-    if (!image) return NULL;
-
-    for (i = 0; i < getcount(&image->symbols); i++) {
-        const symbol_t *sym = getsymbol(&image->symbols, i);
-        addr_t addr = base + sym->value;
-
-        if (addr > end) break;
-
-        if (start <= addr && addr < end) {
-            if (strchr("Tt", sym->type)) return "text";
-            if (strchr("BCb", sym->type)) return "bss";
-            if (strchr("DRVdr", sym->type)) return "data";
-        }
-    }
-
-    return NULL;
-}
-
-
 symbol_t *cheritree_find_symbol(const char *path,
     addr_t base, addr_t addr)
 {
@@ -130,10 +105,30 @@ symbol_t *cheritree_find_symbol(const char *path,
 
     if (!image) return NULL;
 
-    for (i = 0; i < getcount(&image->symbols); i++) {
-        const symbol_t *sym = getsymbol(&image->symbols, i);
-        if (base + sym->value > addr) break;
+    i = getcount(&image->symbols);
+    while (--i >= 0) {
+        symbol_t *sym = getsymbol(&image->symbols, i);
+        if (base + sym->value <= addr)
+            return sym;
     }
 
-    return (i) ? getsymbol(&image->symbols, i-1) : NULL;
+    return NULL;
+}
+
+
+const char *cheritree_find_type(const char *path,
+    addr_t base, addr_t start, addr_t end)
+{
+    symbol_t *sym = cheritree_find_symbol(path, base, end);
+    int i;
+
+    if (!sym) return NULL;
+
+    if (start <= base + sym->value) {
+        if (strchr("Tt", sym->type)) return "text";
+        if (strchr("BCb", sym->type)) return "bss";
+        if (strchr("DRVdr", sym->type)) return "data";
+    }
+
+    return NULL;
 }
