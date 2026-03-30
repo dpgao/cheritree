@@ -9,7 +9,6 @@ CheriTree provides a library to help understand the impact of library compartmen
 * [Source Code](#source)
 * [Design Notes](#design)
 * [Getting Started](#start)
-* [Runtime Prerequisites](#prereq)
 * [Current Status](#status)
 * [Limitations](#limitations)
 * [Known Issues](#issues)
@@ -45,33 +44,22 @@ The output currently goes to _stdout_, but the design will support a programmati
 <a id="start"></a>
 ## Getting Started
 
+CheriBSD 25.03 or later is required for library compartmentalisation support.
+
 The project can be built by running ___make___ at the top level. Only native CheriBSD builds on Morello hardware have been tested.
 
 To include the library with an existing application, link with both ___cheritreestub.a___ (contains assembler wrappers to preserve the state) and ___cheritree.so___. The capability tree can be seen by calling ___cheritree_print_capabilities()___, which is defined in ___cheritree.h___.
 
 Optionally, a call to ___cheritree_init()___ can be added before use. If there are multiple shared libraries, calling this from each one will enable CheriTree to identify the associated stack.
 
-<a id="prereq"></a>
-## Runtime Prerequisites
-
-CheriBSD 22.12 or later is required for library compartmentalisation support.
-
-LD_LIBRARY_PATH must be set to include the compiled binaries. For example:
-
-~~~{.sh}
-export LD_LIBRARY_PATH=.
-export LD_64_LIBRARY_PATH=.
-export LD_C18N_LIBRARY_PATH=.
-~~~
-
 The root capability set can be trimmed at process startup by setting
 ___CHERITREE_EXCLUDE_ROOTS___ to a comma separated list of register IDs.
 Supported IDs are ___0___ through ___32___, where ___31___ is ___pcc___ and
-___32___ is ___csp___.
-For example:
+___32___ is ___csp___. Ranges are also supported using the syntax
+___start-end___. For example:
 
 ~~~{.sh}
-export CHERITREE_EXCLUDE_ROOTS=0,1,32
+export CHERITREE_EXCLUDE_ROOTS=0-8,31,32
 ~~~
 
 <a id="status"></a>

@@ -33,19 +33,41 @@ static int root_is_excluded(int root)
 }
 
 
-static int parse_root_name(const char *name)
+static int parse_and_exclude_roots(const char *entry)
 {
-    char *end;
-    long regnum;
+    const char *dash;
+    long start, end;
+    char *endptr;
+    int i;
 
-    if (!name || !*name)
+    if (!entry || !*entry)
         return -1;
 
-    regnum = strtol(name, &end, 10);
-    if (*end != '\0' || regnum < 0 || regnum > CHERITREE_ROOT_CSP)
+    dash = strchr(entry, '-');
+    if (!dash) {
+        /* Single root ID */
+        start = strtol(entry, &endptr, 10);
+        if (*endptr != '\0' || start < 0 || start > CHERITREE_ROOT_CSP)
+            return -1;
+        exclude_root(start);
+        return 0;
+    }
+
+    /* Range: parse start */
+    start = strtol(entry, &endptr, 10);
+    if (endptr != dash || start < 0 || start > CHERITREE_ROOT_CSP)
         return -1;
 
-    return regnum;
+    /* Parse end */
+    end = strtol(dash + 1, &endptr, 10);
+    if (*endptr != '\0' || end < 0 || end > CHERITREE_ROOT_CSP || end < start)
+        return -1;
+
+    /* Exclude all in range */
+    for (i = start; i <= end; ++i)
+        exclude_root(i);
+
+    return 0;
 }
 
 
@@ -60,18 +82,14 @@ static void load_excluded_roots(const char *value)
     token = config;
     while (token) {
         char *entry = strsep(&token, ",");
-        int root;
 
         if (!entry)
             break;
 
-        root = parse_root_name(entry);
-        if (root < 0)
+        if (parse_and_exclude_roots(entry) < 0)
             fprintf(stderr,
                 "CheriTree: ignoring unknown root id '%s' in %s\n",
                 entry, CHERITREE_ENV_EXCLUDE_ROOTS);
-        else
-            exclude_root(root);
     }
 
     free(config);
