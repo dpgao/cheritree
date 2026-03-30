@@ -6,9 +6,86 @@
 
 #include <cheri/cheric.h>
 
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "mapping.h"
 #include "symbol.h"
+
+
+#define CHERITREE_ENV_EXCLUDE_ROOTS "CHERITREE_EXCLUDE_ROOTS"
+#define CHERITREE_ROOT_PCC 31
+#define CHERITREE_ROOT_CSP 32
+
+static uint64_t excluded_roots;
+
+
+static void exclude_root(int root)
+{
+    excluded_roots |= UINT64_C(1) << root;
+}
+
+
+static int root_is_excluded(int root)
+{
+    return (excluded_roots & (UINT64_C(1) << root)) != 0;
+}
+
+
+static int parse_root_name(const char *name)
+{
+    char *end;
+    long regnum;
+
+    if (!name || !*name)
+        return -1;
+
+    regnum = strtol(name, &end, 10);
+    if (*end != '\0' || regnum < 0 || regnum > CHERITREE_ROOT_CSP)
+        return -1;
+
+    return regnum;
+}
+
+
+static void load_excluded_roots(const char *value)
+{
+    char *config, *token;
+
+    config = strdup(value);
+    if (!config)
+        return;
+
+    token = config;
+    while (token) {
+        char *entry = strsep(&token, ",");
+        int root;
+
+        if (!entry)
+            break;
+
+        root = parse_root_name(entry);
+        if (root < 0)
+            fprintf(stderr,
+                "CheriTree: ignoring unknown root id '%s' in %s\n",
+                entry, CHERITREE_ENV_EXCLUDE_ROOTS);
+        else
+            exclude_root(root);
+    }
+
+    free(config);
+}
+
+
+__attribute__((constructor))
+static void cheritree_load_config(void)
+{
+    const char *value = getenv(CHERITREE_ENV_EXCLUDE_ROOTS);
+
+    if (value && *value)
+        load_excluded_roots(value);
+}
 
 
 void _cheritree_init(void *function, void *stack)
@@ -24,7 +101,7 @@ void _cheritree_init(void *function, void *stack)
 }
 
 
-static void print_address(void *vaddr, char *name, void **origin, int depth)
+static void print_address(void *vaddr, const char *name, void **origin, int depth)
 {
     addr_t addr = (addr_t)vaddr;
     mapping_t *mapping = cheritree_resolve_mapping(addr);
@@ -104,7 +181,7 @@ static int is_exclude(map_t *exclude, void ***pptr)
 
 
 static void print_capability_tree(map_t *map, map_t *exclude,
-    void *vaddr, char *name, void **origin, int depth)
+    void *vaddr, const char *name, void **origin, int depth)
 {
     void **ptr, **end, *p;
 
@@ -141,12 +218,16 @@ void _cheritree_print_capabilities(void **regs, int nregs)
     cheritree_map_add(&exclude, (stack) ? stack->start : (addr_t)regs,
         (addr_t)(regs + nregs));
 
-    if (nregs > 31)
+    if (nregs > 31 && !root_is_excluded(CHERITREE_ROOT_PCC))
         print_capability_tree(&map, &exclude, regs[31], "pcc", NULL, 0);
 
-    print_capability_tree(&map, &exclude, regs, "csp", NULL, 0);
+    if (!root_is_excluded(CHERITREE_ROOT_CSP))
+        print_capability_tree(&map, &exclude, regs, "csp", NULL, 0);
 
     for (i = 0; i < nregs && i < 31; i++) {
+        if (root_is_excluded(i))
+            continue;
+
         sprintf(reg, "c%d", i);
         print_capability_tree(&map, &exclude, regs[i], reg, NULL, 0);
     }

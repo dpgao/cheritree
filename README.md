@@ -64,6 +64,16 @@ export LD_64_LIBRARY_PATH=.
 export LD_C18N_LIBRARY_PATH=.
 ~~~
 
+The root capability set can be trimmed at process startup by setting
+___CHERITREE_EXCLUDE_ROOTS___ to a comma separated list of register IDs.
+Supported IDs are ___0___ through ___32___, where ___31___ is ___pcc___ and
+___32___ is ___csp___.
+For example:
+
+~~~{.sh}
+export CHERITREE_EXCLUDE_ROOTS=0,1,32
+~~~
+
 <a id="status"></a>
 ## Current Status
 
