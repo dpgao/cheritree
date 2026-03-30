@@ -1,36 +1,17 @@
-INCLUDES=-Iexample/lib1 -Iexample/lib2 -Isrc -I../src
-CFLAGS=-march=morello -mabi=purecap -g $(INCLUDES) -Wl,-Bsymbolic
-# CFLAGS=-march=morello -mabi=aapcs -g $(INCLUDES)
-C18NFLAGS=-Wl,--dynamic-linker=/libexec/ld-elf-c18n.so.1
-#C18NFLAGS=-Wl,--dynamic-linker=$(HOME)/ld-elf-c18n.so.1
+CXXFLAGS=-Og
 
-rebuild: clean all
+all:	libcheritree.so libcheritreestub.a
 
-all:	shared-example c18n-example
+libcheritree.so: src/cheritree.cpp src/capabilities.cpp src/mapping.cpp src/symbol.cpp
+	c++ -shared $(CXXFLAGS) \
+		src/cheritree.cpp src/capabilities.cpp src/mapping.cpp src/symbol.cpp \
+		-Wl,--version-script=src/cheritree.map \
+		-nodefaultlibs -lc -Wl,-Bstatic -lc++ -lcxxrt -lgcc_eh -Wl,-Bdynamic \
+		-o libcheritree.so
 
-shared-example:	example/main.c lib1.so lib2.so lib3.so cheritree.so cheritreestub.a
-	cc $(CFLAGS) -rdynamic example/main.c cheritreestub.a -o shared-example lib1.so lib2.so cheritree.so
-
-c18n-example:	example/main.c lib1.so lib2.so lib3.so cheritree.so cheritreestub.a
-	cc $(CFLAGS) -rdynamic $(C18NFLAGS) example/main.c cheritreestub.a -o c18n-example lib1.so lib2.so cheritree.so
-
-cheritree.so: src/cheritree.c src/mapping.c src/symbol.c \
-		src/util.c src/stubs.S cheritreestub.a
-	cc -fPIC -shared $(CFLAGS) -Wl,--version-script=src/cheritree.map src/cheritree.c \
-		src/mapping.c src/symbol.c src/util.c stubs.o -o cheritree.so
-
-cheritreestub.a: src/stubs.S
-	cc -fPIC -c src/stubs.S
-	ar -rc cheritreestub.a stubs.o
-
-lib1.so: example/lib1/lib1.c cheritreestub.a
-	cc -fPIC -shared $(CFLAGS) -Wl,--version-script=example/lib1/lib1.map example/lib1/lib1.c cheritreestub.a -o lib1.so
-
-lib2.so: example/lib2/lib2.c cheritreestub.a
-	cc -fPIC -shared $(CFLAGS) -Wl,--version-script=example/lib2/lib2.map example/lib2/lib2.c cheritreestub.a -o lib2.so
-
-lib3.so: example/lib3/lib3.c cheritreestub.a
-	cc -fPIC -shared $(CFLAGS) -Wl,--version-script=example/lib3/lib3.map example/lib3/lib3.c cheritreestub.a -o lib3.so
+libcheritreestub.a: src/stubs.S
+	cc -c src/stubs.S -o stubs.o
+	ar -rc libcheritreestub.a stubs.o
 
 clean:
-	rm -f lib1.so lib2.so lib3.so cheritree.so cheritreestub.a stubs.o shared-example c18n-example
+	rm -f libcheritree.so stubs.o libcheritreestub.a

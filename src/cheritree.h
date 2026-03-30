@@ -2,20 +2,28 @@
  *  SPDX-License-Identifier: BSD-3-Clause
  *
  *  Copyright (c) 2023, rtegrity ltd. All rights reserved.
+ *  Copyright (c) 2026, Dapeng Gao.
  */
 
 #ifndef _CHERITREE_H_
 #define _CHERITREE_H_
 
+#include <cheri/cheric.h>
 
-extern int cheritree_print_mappings();
-extern void cheritree_print_capabilities();
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+extern int cheritree_json_output;
 
-static void cheritree_init() {
-    extern void _cheritree_init(void *function, void *stack);
-    char *cp;
-    _cheritree_init(&cheritree_init, &cp);
+void cheritree_print(void);
+static inline void cheritree_init(void) {
+    extern void _cheritree_init(void *, void *);
+    _cheritree_init(cheri_pcc_get(), cheri_stack_get());
 }
 
-#endif /* _CHERITREE_H_ */
+#ifdef __cplusplus
+}
+#endif
+
+#endif // _CHERITREE_H_
