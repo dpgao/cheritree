@@ -15,10 +15,12 @@
 
 
 #define CHERITREE_ENV_EXCLUDE_ROOTS "CHERITREE_EXCLUDE_ROOTS"
+#define CHERITREE_ENV_JSON_OUTPUT "CHERITREE_JSON_OUTPUT"
 #define CHERITREE_ROOT_PCC 31
 #define CHERITREE_ROOT_CSP 32
 
 static uint64_t excluded_roots;
+int json_output;
 
 
 static void exclude_root(int root)
@@ -99,10 +101,14 @@ static void load_excluded_roots(const char *value)
 __attribute__((constructor))
 static void cheritree_load_config(void)
 {
-    const char *value = getenv(CHERITREE_ENV_EXCLUDE_ROOTS);
+    const char *value;
 
+    value = getenv(CHERITREE_ENV_EXCLUDE_ROOTS);
     if (value && *value)
         load_excluded_roots(value);
+
+    value = getenv(CHERITREE_ENV_JSON_OUTPUT);
+    json_output = (value && *value);
 }
 
 
@@ -121,40 +127,97 @@ void _cheritree_init(void *function, void *stack)
 
 static void print_address(void *vaddr, const char *name, void **origin, int depth)
 {
+    ssize_t len;
+    char buf[128];
+    int perm_load = 0, perm_store = 0, perm_execute = 0;
+    int perm_load_cap = 0, perm_store_cap = 0, perm_executive = 0;
+
+    uintcap_t cap = (uintcap_t)vaddr;
     addr_t addr = (addr_t)vaddr;
     mapping_t *mapping = cheritree_resolve_mapping(addr);
-    symbol_t *symbol;
-    addr_t offset;
+    symbol_t *symbol = NULL;
+    addr_t offset = 0;
     int i;
 
-    for (i = 0; i < depth; ++i) putchar(' ');
+    if (json_output)
+        printf("{ \"depth\": %d,", depth);
+    else
+        for (i = 0; i < depth; ++i) putchar(' ');
 
-    if (depth) printf("%p:", origin);
-    else printf("%s", name);
-
-    printf(" %#p  ", vaddr);
-
-    if (!mapping || !*getname(mapping))
-        goto out;
-
-    printf("%s", getname(mapping));
-
-    symbol = cheritree_find_symbol(getpath(mapping), getbase(mapping), addr);
-    offset = addr - (addr_t)getbase(mapping);
-
-    if (!symbol || !*getname(symbol)) {
-        printf("+%#" PRIxADDR, offset);
-        goto out;
+    if (depth) {
+        if (json_output)
+            printf(" \"origin\": \"%p\",", origin);
+        else
+            printf("%p:", origin);
+    } else {
+        if (json_output)
+            printf(" \"origin\": \"%s\",", name);
+        else
+            printf("%s", name);
     }
 
-    printf("!%s", getname(symbol));
+    if (json_output) {
+        strfcap(buf, sizeof(buf), "%a", cap);
+        printf(" \"address\": %s,", buf);
 
-    offset -= symbol->value;
-    if (offset)
+        strfcap(buf, sizeof(buf), "%b", cap);
+        printf(" \"base\": %s,", buf);
+
+        strfcap(buf, sizeof(buf), "%t", cap);
+        printf(" \"top\": %s,", buf);
+
+        strfcap(buf, sizeof(buf), "%v", cap);
+        printf(" \"tag\": %s,", buf[0] == '1' ? "true" : "false");
+
+        strfcap(buf, sizeof(buf), "%S", cap);
+        printf(" \"sealed\": %s,", strcmp(buf, "<unsealed>") != 0 ? "true" : "false");
+
+        len = strfcap(buf, sizeof(buf), "%P", cap);
+        if (len > 0) {
+            perm_load      = (memchr(buf, 'r', len) != NULL);
+            perm_store     = (memchr(buf, 'w', len) != NULL);
+            perm_execute   = (memchr(buf, 'x', len) != NULL);
+            perm_load_cap  = (memchr(buf, 'R', len) != NULL);
+            perm_store_cap = (memchr(buf, 'W', len) != NULL);
+            perm_executive = (memchr(buf, 'E', len) != NULL);
+        }
+
+        printf(" \"perm_load\": %s,",      perm_load      ? "true" : "false");
+        printf(" \"perm_store\": %s,",     perm_store     ? "true" : "false");
+        printf(" \"perm_execute\": %s,",   perm_execute   ? "true" : "false");
+        printf(" \"perm_load_cap\": %s,",  perm_load_cap  ? "true" : "false");
+        printf(" \"perm_store_cap\": %s,", perm_store_cap ? "true" : "false");
+        printf(" \"perm_executive\": %s,", perm_executive ? "true" : "false");
+    } else
+        printf(" %#p  ", vaddr);
+
+    if (json_output)
+        printf(" \"mapping\": \"%s\",", getname(mapping));
+    else
+        printf("%s", getname(mapping));
+
+    if (*getname(mapping)) {
+        offset = addr - (addr_t)getbase(mapping);
+        symbol = cheritree_find_symbol(getpath(mapping), getbase(mapping), addr);
+        if (*getname(symbol))
+            offset -= symbol->value;
+    }
+
+    if (json_output)
+        printf(" \"symbol\": \"%s\",", getname(symbol));
+    else if (*getname(symbol))
+        printf("!%s", getname(symbol));
+
+    if (json_output)
+        printf(" \"offset\": %" PRIuADDR, offset);
+    else if (offset)
         printf("+%#" PRIxADDR, offset);
 
 out:
-    putchar('\n');
+    if (json_output)
+        printf(" }\n");
+    else
+        putchar('\n');
 }
 
 

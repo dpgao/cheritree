@@ -15,6 +15,7 @@
 
 
 static vec_t mappings;
+extern int json_output;
 
 static void load_mappings();
 static void flags_to_str(int flags, char *s, size_t len);
@@ -164,14 +165,31 @@ static struct flagmap { int i; char s[7]; int f; } flagmap[] = {
 
 static void print_mapping(mapping_t *mapping)
 {
+    int flags = getflags(mapping);
     char s[16];
 
-    flags_to_str(getflags(mapping), s, sizeof(s));
+    flags_to_str(flags, s, sizeof(s));
 
-    printf("%#" PRIxADDR "-%#" PRIxADDR " %s %s %s %s [base %#" PRIxADDR "]\n",
-        mapping->start, mapping->end, &s[0], &s[6], &s[13],
-        (*getpath(mapping) ? getpath(mapping) : getname(mapping)),
-        mapping[mapping->base].start);
+    if (json_output)
+        printf("{ \"start\": %" PRIuADDR ", \"end\": %" PRIuADDR ","
+            " \"prot_read\": %s, \"prot_write\": %s, \"prot_exec\": %s,"
+            " \"prot_read_cap\": %s, \"prot_write_cap\": %s,"
+            " \"flags\": \"%s\", \"type\": \"%s\","
+            " \"mapping\": \"%s\", \"base\": %" PRIuADDR " }\n",
+            mapping->start, mapping->end,
+            (flags & CT_PROT_READ)      ? "true" : "false",
+            (flags & CT_PROT_WRITE)     ? "true" : "false",
+            (flags & CT_PROT_EXEC)      ? "true" : "false",
+            (flags & CT_PROT_READ_CAP)  ? "true" : "false",
+            (flags & CT_PROT_WRITE_CAP) ? "true" : "false",
+            &s[6], &s[13],
+            (*getpath(mapping) ? getpath(mapping) : getname(mapping)),
+            mapping[mapping->base].start);
+    else
+        printf("%#" PRIxADDR "-%#" PRIxADDR " %s %s %s %s [%#" PRIxADDR "]\n",
+            mapping->start, mapping->end, &s[0], &s[6], &s[13],
+            (*getpath(mapping) ? getpath(mapping) : getname(mapping)),
+            mapping[mapping->base].start);
 }
 
 
@@ -223,14 +241,28 @@ static struct flagmap { int i; char s[5]; int f; } flagmap[] = {
 
 static void print_mapping(mapping_t *mapping)
 {
+    int flags = getflags(mapping);
     char s[5];
 
-    flags_to_str(getflags(mapping), s, sizeof(s));
+    flags_to_str(flags, s, sizeof(s));
 
-    printf("%#" PRIxADDR "-%#" PRIxADDR " %s %s [base %#" PRIxADDR "]\n",
-        mapping->start, mapping->end, s,
-        (*getpath(mapping) ? getpath(mapping) : getname(mapping)),
-        mapping[mapping->base].start);
+    if (json_output)
+        printf("{ \"start\": %" PRIuADDR ", \"end\": %" PRIuADDR ","
+            " \"prot_read\": %s, \"prot_write\": %s, \"prot_exec\": %s,"
+            " \"flag_private\": %s,"
+            " \"mapping\": \"%s\", \"base\": %" PRIuADDR " }\n",
+            mapping->start, mapping->end,
+            (flags & CT_PROT_READ)    ? "true" : "false",
+            (flags & CT_PROT_WRITE)   ? "true" : "false",
+            (flags & CT_PROT_EXEC)    ? "true" : "false",
+            (flags & CT_FLAG_PRIVATE) ? "true" : "false",
+            (*getpath(mapping) ? getpath(mapping) : getname(mapping)),
+            mapping[mapping->base].start);
+    else
+        printf("%#" PRIxADDR "-%#" PRIxADDR " %s %s [%#" PRIxADDR "]\n",
+            mapping->start, mapping->end, s,
+            (*getpath(mapping) ? getpath(mapping) : getname(mapping)),
+            mapping[mapping->base].start);
 }
 
 

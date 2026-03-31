@@ -62,6 +62,14 @@ ___start-end___. For example:
 export CHERITREE_EXCLUDE_ROOTS=0-8,31,32
 ~~~
 
+Output formatting can be controlled with the ___CHERITREE_JSON_OUTPUT___
+variable. When set to any non-empty value, output is printed as machine-readable
+JSON objects instead of pretty-printed. For example:
+
+~~~{.sh}
+export CHERITREE_JSON_OUTPUT=1
+~~~
+
 <a id="status"></a>
 ## Current Status
 

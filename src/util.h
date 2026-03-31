@@ -18,12 +18,15 @@
 typedef ptraddr_t addr_t;
 #if __PTRADDR_WIDTH__ == 64
 #define PRIxADDR    PRIx64
+#define PRIuADDR    PRIu64
 #else
 #define PRIxADDR    PRIx32
+#define PRIuADDR    PRIu32
 #endif
 #else
 typedef __uint64_t addr_t;
 #define PRIxADDR    PRIx64
+#define PRIuADDR    PRIu64
 #endif
 
 
