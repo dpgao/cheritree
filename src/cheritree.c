@@ -241,15 +241,6 @@ static int get_pointer_range(void *vaddr, void ***pstart, void ***pend)
 }
 
 
-static int is_printed(map_t *map, void *addr)
-{
-    addr_t start = cheri_base_get(addr);
-    addr_t end = cheri_top_get(addr);
-
-    return !cheritree_map_add(map, start, end);
-}
-
-
 static int is_exclude(map_t *exclude, void ***pptr)
 {
     addr_t addr = (addr_t)*pptr;
@@ -263,12 +254,14 @@ static int is_exclude(map_t *exclude, void ***pptr)
 }
 
 
-static void print_capability_tree(map_t *map, map_t *exclude,
+static void print_capability_tree(addrset_t *visited, map_t *exclude,
     void *vaddr, const char *name, void **origin, int depth)
 {
     void **ptr, **end, *p;
 
-    if (!cheri_tag_get(vaddr) || is_printed(map, vaddr)) return;
+    if (!cheri_tag_get(vaddr) ||
+        !cheritree_addrset_add(visited, (addr_t)origin))
+        return;
 
     print_address(vaddr, name, origin, depth);
 
@@ -276,7 +269,7 @@ static void print_capability_tree(map_t *map, map_t *exclude,
         while (ptr < end)
             if (!is_exclude(exclude, &ptr) &&
                 cheritree_dereference_address(&ptr, &p)) {
-                print_capability_tree(map, exclude, p, name, ptr, depth + 1);
+                print_capability_tree(visited, exclude, p, name, ptr, depth + 1);
                 ++ptr;
             }
 }
@@ -284,7 +277,8 @@ static void print_capability_tree(map_t *map, map_t *exclude,
 
 void _cheritree_print_capabilities(void **regs, int nregs)
 {
-    map_t map, exclude;
+    addrset_t *visited;
+    map_t *exclude;
     mapping_t *stack;
     char reg[20];
     int i;
@@ -292,29 +286,29 @@ void _cheritree_print_capabilities(void **regs, int nregs)
     if (nregs > 30)
         _cheritree_init(regs[30], regs);
 
-    cheritree_map_init(&map, 1024);
-    cheritree_map_init(&exclude, 100);
+    visited = cheritree_addrset_create();
+    exclude = cheritree_map_create();
 
     // Exclude cheritree stack frames
 
     stack = cheritree_resolve_mapping((addr_t)regs);
-    cheritree_map_add(&exclude, (stack) ? stack->start : (addr_t)regs,
+    cheritree_map_add(exclude, (stack) ? stack->start : (addr_t)regs,
         (addr_t)(regs + nregs));
 
     if (nregs > 31 && !root_is_excluded(CHERITREE_ROOT_PCC))
-        print_capability_tree(&map, &exclude, regs[31], "pcc", NULL, 0);
+        print_capability_tree(visited, exclude, regs[31], "pcc", NULL, 0);
 
     if (!root_is_excluded(CHERITREE_ROOT_CSP))
-        print_capability_tree(&map, &exclude, regs, "csp", NULL, 0);
+        print_capability_tree(visited, exclude, regs, "csp", NULL, 0);
 
     for (i = 0; i < nregs && i < 31; i++) {
         if (root_is_excluded(i))
             continue;
 
         sprintf(reg, "c%d", i);
-        print_capability_tree(&map, &exclude, regs[i], reg, NULL, 0);
+        print_capability_tree(visited, exclude, regs[i], reg, NULL, 0);
     }
 
-    cheritree_map_delete(&map);
-    cheritree_map_delete(&exclude);
+    cheritree_addrset_delete(visited);
+    cheritree_map_delete(exclude);
 }

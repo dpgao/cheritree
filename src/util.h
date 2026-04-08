@@ -10,6 +10,10 @@
 #include <stddef.h>
 #include <inttypes.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 /*
  *  Integer for any valid address.
@@ -64,14 +68,18 @@ typedef struct range {
     addr_t end;         // End of range
 } range_t;
 
-typedef vec_t map_t;
+typedef struct map map_t;
 
-void cheritree_map_init(map_t *v, int expect);
+map_t *cheritree_map_create(void);
 int cheritree_map_add(map_t *v, addr_t start, addr_t end);
 int cheritree_map_find(map_t *v, addr_t addr, range_t *prange);
-void cheritree_map_print(map_t *v);
-void cheritree_map_reset(map_t *v);
 void cheritree_map_delete(map_t *v);
+
+typedef struct addrset addrset_t;
+
+addrset_t *cheritree_addrset_create(void);
+int cheritree_addrset_add(addrset_t *v, addr_t addr);
+void cheritree_addrset_delete(addrset_t *v);
 
 
 /*
@@ -105,5 +113,9 @@ int cheritree_load_from_cmd(const char *cmd,
 
 int cheritree_load_from_path(const char *path,
     int (loadelement)(char *line, vec_t *v), vec_t *v);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _CHERITREE_UTIL_H_ */
