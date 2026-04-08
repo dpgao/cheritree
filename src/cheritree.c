@@ -6,10 +6,12 @@
 
 #include <cheri/cheric.h>
 
+#include <cheriintrin.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "mapping.h"
 #include "symbol.h"
 
@@ -225,13 +227,13 @@ static int get_pointer_range(void *vaddr, void ***pstart, void ***pend)
 {
     void **ptr, **end;
 
-    ptr = cheri_setaddress(vaddr,
-        __align_up(cheri_getbase(vaddr), sizeof(*pstart)));
+    ptr = cheri_address_set(vaddr,
+        __align_up(cheri_base_get(vaddr), sizeof(*pstart)));
 
-    end = cheri_setaddress(vaddr,
-        __align_down(cheri_gettop(vaddr), sizeof(*pend)));
+    end = cheri_address_set(vaddr,
+        __align_down(cheri_top_get(vaddr), sizeof(*pend)));
 
-    if (!cheri_gettag(ptr) || !cheri_gettag(end)) return 0;
+    if (!cheri_tag_get(ptr) || !cheri_tag_get(end)) return 0;
 
     *pstart = ptr;
     *pend = end;
@@ -241,8 +243,8 @@ static int get_pointer_range(void *vaddr, void ***pstart, void ***pend)
 
 static int is_printed(map_t *map, void *addr)
 {
-    addr_t start = cheri_getbase(addr);
-    addr_t end = cheri_gettop(addr);
+    addr_t start = cheri_base_get(addr);
+    addr_t end = cheri_top_get(addr);
 
     return !cheritree_map_add(map, start, end);
 }
@@ -256,7 +258,7 @@ static int is_exclude(map_t *exclude, void ***pptr)
     if (!cheritree_map_find(exclude, addr, &range))
         return 0;
 
-    *pptr = cheri_setaddress(*pptr, range.end);
+    *pptr = cheri_address_set(*pptr, range.end);
     return 1;
 }
 
@@ -266,7 +268,7 @@ static void print_capability_tree(map_t *map, map_t *exclude,
 {
     void **ptr, **end, *p;
 
-    if (!cheri_gettag(vaddr) || is_printed(map, vaddr)) return;
+    if (!cheri_tag_get(vaddr) || is_printed(map, vaddr)) return;
 
     print_address(vaddr, name, origin, depth);
 

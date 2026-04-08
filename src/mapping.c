@@ -4,11 +4,12 @@
  *  Copyright (c) 2023, rtegrity ltd. All rights reserved.
  */
 
-#include <cheri/cheric.h>
-
-#include <stdio.h>
+#include <cheriintrin.h>
 #include <limits.h>
+#include <link.h>
+#include <stdio.h>
 #include <string.h>
+
 #include "mapping.h"
 #include "symbol.h"
 #include "util.h"
@@ -347,7 +348,7 @@ int cheritree_dereference_address(void ***pptr, void **paddr)
     if (!mapping) return 0;
 
     if ((getprot(mapping) & CT_PROT_READ_CAP) == 0) {
-        *pptr = cheri_setaddress(*pptr, mapping->end);
+        *pptr = cheri_address_set(*pptr, mapping->end);
         return 0;
     }
 
