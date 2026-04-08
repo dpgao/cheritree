@@ -5,7 +5,6 @@
  */
 
 #include <map>
-#include <set>
 
 #include "util.h"
 
@@ -16,7 +15,7 @@ struct map {
 
 
 struct addrset {
-    std::set<addr_t> addrs;
+    std::map<addr_t, addr_t> ranges;
 };
 
 
@@ -95,7 +94,28 @@ addrset_t *cheritree_addrset_create(void)
 
 int cheritree_addrset_add(addrset_t *v, addr_t addr)
 {
-    return v->addrs.insert(addr).second ? 1 : 0;
+    auto &m = v->ranges;
+    addr_t new_start = addr;
+    addr_t new_end = addr + 1;
+
+    auto it = m.upper_bound(addr);
+    if (it != m.begin()) {
+        auto prev = std::prev(it);
+        if (addr < prev->second)
+            return 0;
+        if (prev->second == addr) {
+            new_start = prev->first;
+            it = m.erase(prev);
+        }
+    }
+
+    if (it != m.end() && it->first == new_end) {
+        new_end = it->second;
+        it = m.erase(it);
+    }
+
+    m[new_start] = new_end;
+    return 1;
 }
 
 
