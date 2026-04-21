@@ -296,7 +296,7 @@ static void print_capability_tree(permmap_t &map,
     print_address(vaddr, origin, depth, false, first);
 
     void *target = (void *)dl_c18n_get_trampoline_target(vaddr);
-    if (target && !is_visited(map, target, true))
+    if (target && cheri_base_get(target) && !is_visited(map, target, true))
         print_address(target, origin, depth, true, first);
 
     if ((cheri_perms_get(vaddr) & CHERI_PERM_LOAD) == 0 ||

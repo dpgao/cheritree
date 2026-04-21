@@ -58,6 +58,7 @@ extern "C" int cheritree_json_output;
 extern "C" FILE *cheritree_output;
 
 static std::vector<std::unique_ptr<mapping_t>> mappings;
+static mapping_t mapping_zero{0, 0, CT_PROT_NONE, ""};
 
 static void flags_to_str(int flags, char *s, size_t len);
 static int str_to_flags(char *s, size_t len);
@@ -360,7 +361,7 @@ static mapping_t &find_mapping(addr_t addr)
 
     fprintf(stderr,
         "CheriTree: cannot resolve mapping for %#" PRIxADDR "\n", addr);
-    abort();
+    return mapping_zero;
 }
 
 mapping_t &cheritree_resolve_mapping(addr_t addr)
