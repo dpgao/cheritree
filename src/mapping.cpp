@@ -113,9 +113,9 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
 {
     auto mapping = std::make_unique<mapping_t>(start, end, flags, path);
     mapping_t *base = nullptr;
-    addr_t cursor = start;
+    auto it = v.rbegin();
 
-    for (auto it = v.rbegin(); it != v.rend(); ++it) {
+    for (addr_t cursor = start; it != v.rend(); ++it) {
         mapping_t *mp = it->get();
 
         if (mp->end != cursor)
@@ -131,19 +131,24 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
 
     if (path.empty()) {
         if (base && cheritree_find_type(base->path, base->start, start, end)) {
-            mapping->base = base;
+            while (it != v.rbegin()) {
+                --it;
+                it->get()->base = base;
+            }
             mapping->name = base->name;
         } else
             add_mapping_name(*mapping);
     } else {
-        if (base && path == base->path)
-            mapping->base = base;
-
-        size_t pos = path.rfind('/');
-        if (pos == std::string::npos)
-            mapping->name = path;
-        else
-            mapping->name = path.substr(pos + 1);
+        if (base && path == base->path) {
+            while (it != v.rbegin()) {
+                --it;
+                it->get()->base = base;
+            }
+            mapping->name = base->name;
+        } else
+            mapping->name = path.rfind('/') == std::string::npos ?
+                            path :
+                            path.substr(path.rfind('/') + 1);
 
         cheritree_load_symbols(path);
     }
