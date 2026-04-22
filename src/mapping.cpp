@@ -113,9 +113,21 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
 {
     auto mapping = std::make_unique<mapping_t>(start, end, flags, path);
     mapping_t *base = nullptr;
+    addr_t cursor = start;
 
-    if (!v.empty() && v.back()->end == start && !v.back()->base->path.empty())
-        base = v.back()->base;
+    for (auto it = v.rbegin(); it != v.rend(); ++it) {
+        mapping_t *mp = it->get();
+
+        if (mp->end != cursor)
+            break;
+        cursor = mp->start;
+
+        // The first file-backed mapping in the chain decides the base.
+        if (!mp->path.empty()) {
+            base = mp->base;
+            break;
+        }
+    }
 
     if (path.empty()) {
         if (base && cheritree_find_type(base->path, base->start, start, end)) {
@@ -124,8 +136,6 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
         } else
             add_mapping_name(*mapping);
     } else {
-        // Reuse the current reservation base only across contiguous segments of
-        // the same image.
         if (base && path == base->path)
             mapping->base = base;
 
