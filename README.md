@@ -24,13 +24,10 @@ When using with linkage-based compartmentalisation enabled, the following enviro
 export LD_COMPARTMENT_NO_FAST_PATH=1
 ~~~
 
-The root capability set can be trimmed at process startup by setting
-`CHERITREE_EXCLUDE_ROOTS` to a comma separated list of register IDs.
-Supported IDs are `0` through `32`, where `31` is `pcc` and `32` is `csp`.
-Ranges are also supported using the syntax `start-end`.
-For example:
+Output is disabled unless `CHERITREE_OUTPUT_PATH` is set:
 ~~~{.sh}
-export CHERITREE_EXCLUDE_ROOTS=0-8,31,32
+export CHERITREE_OUTPUT_PATH=/dev/stdout
+export CHERITREE_OUTPUT_PATH=/tmp/cheritree.out
 ~~~
 
 Output formatting can be controlled either programmatically or via an
@@ -45,10 +42,13 @@ non-empty value before the process starts:
 export CHERITREE_JSON_OUTPUT=1
 ~~~
 
-By default, output goes to _stdout_. To redirect output to a file, set
-`CHERITREE_OUTPUT_PATH` to a file path:
+The root capability set can be trimmed at process startup by setting
+`CHERITREE_EXCLUDE_ROOTS` to a comma separated list of register IDs.
+Supported IDs are `0` through `32`, where `31` is `pcc` and `32` is `csp`.
+Ranges are also supported using the syntax `start-end`.
+For example:
 ~~~{.sh}
-export CHERITREE_OUTPUT_PATH=/tmp/cheritree.out
+export CHERITREE_EXCLUDE_ROOTS=0-8,31,32
 ~~~
 
 ## Acknowledgements

@@ -94,17 +94,15 @@ static void cheritree_load_config(void)
     value = getenv(CHERITREE_ENV_JSON_OUTPUT);
     cheritree_json_output = (value && *value);
 
-    cheritree_output = stdout;
     value = getenv(CHERITREE_ENV_OUTPUT_PATH);
     if (value && *value) {
         cheritree_output = fopen(value, "w");
-        if (!cheritree_output) {
+        if (cheritree_output)
+            setvbuf(cheritree_output, NULL, _IOLBF, 0);
+        else
             fprintf(stderr,
                 "CheriTree: unable to open output file '%s'\n", value);
-            cheritree_output = stdout;
-        }
     }
-    setvbuf(cheritree_output, NULL, _IOLBF, 0);
 }
 
 extern "C"
@@ -127,6 +125,9 @@ struct cheritree_dummy_pair _cheritree_init(void *function, void *stack)
 extern "C"
 struct cheritree_dummy_pair _cheritree_print()
 {
+    if (!cheritree_output)
+        return (struct cheritree_dummy_pair) {};
+
     _cheritree_init(cheritree_regs[CHERITREE_ROOT_PCC],
         cheritree_regs[CHERITREE_ROOT_CSP]);
 
