@@ -99,10 +99,10 @@ class Mapping:
     @classmethod
     def from_dict(cls, m):
         return cls(start=m["start"], end=m["end"],
-                   name=m["mapping"], base=m["base"],
-                   prot_read=m["prot_read"],
-                   prot_write=m["prot_write"],
-                   prot_exec=m["prot_exec"])
+                   name=m["mapping"], base=m.get("base", m["start"]),
+                   prot_read=m.get("prot_read", True),
+                   prot_write=m.get("prot_write", True),
+                   prot_exec=m.get("prot_exec", True))
 
 
 class CoordSystem:
