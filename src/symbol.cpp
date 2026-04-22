@@ -61,18 +61,13 @@ void cheritree_load_symbols(const std::string &path)
     if (!img.empty()) return;
 
     // Retry with dynamic symbols
-    sprintf(cmd, "nm -Dne --defined-only %s", path.c_str());
+    sprintf(cmd, "nm -Dne --defined-only %s 2>/dev/null", path.c_str());
     fp = popen(cmd, "r");
     if (fp) {
         while (fgets(buffer, sizeof(buffer), fp) != NULL)
             if (!load_symbol(buffer, img))
                 break;
         pclose(fp);
-    }
-
-    if (img.empty()) {
-        fprintf(stderr, "Unable to load symbols");
-        exit(1);
     }
 }
 
@@ -96,12 +91,21 @@ symbol_t *cheritree_find_symbol(const std::string &path,
 const char *cheritree_find_type(const std::string &path,
     addr_t base, addr_t start, addr_t end)
 {
-    symbol_t *sym = cheritree_find_symbol(path, base, end);
+    auto *img = find_image(path);
 
-    if (sym && start <= base + sym->value) {
-        if (strchr("Tt", sym->type)) return "text";
-        if (strchr("BCb", sym->type)) return "bss";
-        if (strchr("DRVdr", sym->type)) return "data";
+    if (!img) return NULL;
+
+    for (const auto &sym : *img) {
+        addr_t addr = base + sym.value;
+
+        if (addr > end)
+            break;
+
+        if (start <= addr && addr < end) {
+            if (strchr("Tt", sym.type)) return "text";
+            if (strchr("BCb", sym.type)) return "bss";
+            if (strchr("DRVdr", sym.type)) return "data";
+        }
     }
 
     return NULL;

@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -58,7 +59,12 @@ extern "C" int cheritree_json_output;
 extern "C" FILE *cheritree_output;
 
 static std::vector<std::unique_ptr<mapping_t>> mappings;
-static mapping_t mapping_zero{0, 0, CT_PROT_NONE, ""};
+static mapping_t mapping_zero{
+    std::numeric_limits<addr_t>::max(),
+    std::numeric_limits<addr_t>::max(),
+    CT_PROT_NONE,
+    ""
+};
 
 static void flags_to_str(int flags, char *s, size_t len);
 static int str_to_flags(char *s, size_t len);
@@ -105,18 +111,11 @@ static void add_mapping_name(mapping_t &mapping)
 static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
     addr_t start, addr_t end, int flags, const std::string &path)
 {
-    mapping_t *base = nullptr;
     auto mapping = std::make_unique<mapping_t>(start, end, flags, path);
+    mapping_t *base = nullptr;
 
-    // Find a candidate base
-    for (auto &mp : v)
-        if (mp->base == mp.get() && !mp->path.empty()) {
-            base = mp.get();
-            if (path == mp->path) {
-                mapping->base = base;
-                break;
-            }
-        }
+    if (!v.empty() && v.back()->end == start && !v.back()->base->path.empty())
+        base = v.back()->base;
 
     if (path.empty()) {
         if (base && cheritree_find_type(base->path, base->start, start, end)) {
@@ -125,6 +124,11 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
         } else
             add_mapping_name(*mapping);
     } else {
+        // Reuse the current reservation base only across contiguous segments of
+        // the same image.
+        if (base && path == base->path)
+            mapping->base = base;
+
         size_t pos = path.rfind('/');
         if (pos == std::string::npos)
             mapping->name = path;

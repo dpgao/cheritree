@@ -309,10 +309,11 @@ static void print_capability_tree(permmap_t &map,
     end = (void **)cheri_address_set(vaddr,
         __align_down(cheri_top_get(vaddr), sizeof(*end)));
 
-    if (!cheri_tag_get(ptr) || !cheri_tag_get(end))
+    // Sanity check
+    if (!cheri_tag_get(end))
         return;
 
-    while (ptr < end)
+    while (cheri_tag_get(ptr) && ptr < end)
         if (cheritree_dereference_address(&ptr, &p)) {
             print_capability_tree(map, p, ptr, depth + 1, first);
             ++ptr;
