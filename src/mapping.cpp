@@ -135,6 +135,7 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
                 --it;
                 it->get()->base = base;
             }
+            mapping->base = base;
             mapping->name = base->name;
         } else
             add_mapping_name(*mapping);
@@ -144,6 +145,7 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
                 --it;
                 it->get()->base = base;
             }
+            mapping->base = base;
             mapping->name = base->name;
         } else
             mapping->name = path.rfind('/') == std::string::npos ?
