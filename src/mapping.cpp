@@ -5,6 +5,7 @@
  *  Copyright (c) 2026, Dapeng Gao.
  */
 
+#include <sys/param.h>
 #include <sys/sysctl.h>
 #include <sys/user.h>
 
@@ -206,7 +207,7 @@ static void load_mappings()
     for (i = 0; i < count; i++) {
         const auto &kve = vmmap[i];
         add_mapping(v, kve.kve_start, kve.kve_end,
-            kve.kve_protection, kve.kve_path, kve.kve_reservation);
+            kve.kve_protection, kve.kve_path);
     }
 
     procstat_freevmmap(procstat, vmmap);
