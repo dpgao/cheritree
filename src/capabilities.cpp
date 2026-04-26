@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <map>
 
+#include "cheritree.h"
 #include "capabilities.h"
 #include "mapping.h"
 #include "symbol.h"
@@ -328,6 +329,8 @@ void cheritree_print_capabilities()
     // Exclude CheriTree's exported global variables
     is_visited(map, &cheritree_json_output);
     is_visited(map, &cheritree_regs);
+    is_visited(map, (void *)&_cheritree_init);
+    is_visited(map, (void *)&_cheritree_print);
 
     if (cheritree_json_output)
         fprintf(cheritree_output, "[\n");

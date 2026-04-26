@@ -14,8 +14,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <vector>

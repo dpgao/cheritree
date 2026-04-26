@@ -6,13 +6,11 @@
  */
 
 #include <fcntl.h>
+#include <gelf.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <unordered_map>
-
-#include <gelf.h>
-#include <libelf.h>
 
 #include "symbol.h"
 

@@ -15,10 +15,12 @@ extern "C" {
 #endif
 
 extern int cheritree_json_output;
-
 void cheritree_print(void);
+
+void _cheritree_init(void *, void *);
+void _cheritree_print(void);
+
 static inline void cheritree_init(void) {
-    extern void _cheritree_init(void *, void *);
     _cheritree_init(cheri_pcc_get(), cheri_stack_get());
 }
 
