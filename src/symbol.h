@@ -19,12 +19,20 @@ struct symbol_t {
     addr_t value;
 };
 
+struct compart_t {
+    addr_t start;
+    addr_t end;
+    std::string name;
+};
+
 struct image_t {
     const std::string path;
     std::vector<symbol_t> symbols;
+    std::vector<compart_t> comparts;
 
     const symbol_t *find_symbol(addr_t base, addr_t addr) const;
     bool has_symbol(addr_t base, addr_t start, addr_t end) const;
+    const std::string *find_compart(addr_t start, addr_t end) const;
 };
 
 std::shared_ptr<image_t> load_image(const std::string &path);

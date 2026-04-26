@@ -43,14 +43,6 @@ mapping_t::mapping_t(addr_t start, addr_t end, int prot)
 {
 }
 
-static const std::string &mapping_label(const mapping_t &mapping)
-{
-    if (mapping.image)
-        return mapping.image->path;
-
-    return mapping.name;
-}
-
 inline int mapping_t::prot() const
 {
     return (prot_read ? KVME_PROT_READ : 0) |
@@ -96,6 +88,16 @@ static void infer_mapping_name(mapping_t &mapping)
     }
 }
 
+static void set_default_mapping_name(mapping_t &mapping)
+{
+    mapping.name = mapping.image->path;
+    const std::string *compart = mapping.image->find_compart(
+        mapping.start - mapping.base->start,
+        mapping.end - mapping.base->start);
+    if (compart != NULL && !compart->empty())
+        mapping.name += ":" + *compart;
+}
+
 static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
     addr_t start, addr_t end, int prot, const std::string &path)
 {
@@ -123,10 +125,11 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
                 --it;
                 it->get()->base = base;
                 it->get()->image = base->image;
+                set_default_mapping_name(*it->get());
             }
             mapping->base = base;
             mapping->image = base->image;
-            mapping->name = base->name;
+            set_default_mapping_name(*mapping);
         } else
             infer_mapping_name(*mapping);
     } else {
@@ -137,14 +140,11 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
                 --it;
                 it->get()->base = base;
                 it->get()->image = base->image;
+                set_default_mapping_name(*it->get());
             }
             mapping->base = base;
-            mapping->image = base->image;
-            mapping->name = base->name;
-        } else
-            mapping->name = path.rfind('/') == std::string::npos ?
-                            path :
-                            path.substr(path.rfind('/') + 1);
+        }
+        set_default_mapping_name(*mapping);
     }
 
     v.push_back(std::move(mapping));
@@ -173,13 +173,13 @@ static void print_mapping(const mapping_t &mapping)
             mapping.prot_exec ? "true" : "false",
             mapping.prot_read_cap ? "true" : "false",
             mapping.prot_write_cap ? "true" : "false",
-            mapping_label(mapping).c_str(),
+            mapping.name.c_str(),
             mapping.base->start);
     else
         fprintf(cheritree_output,
             "%#" PRIxADDR "-%#" PRIxADDR " %s %s [%#" PRIxADDR "]\n",
             mapping.start, mapping.end, s,
-            mapping_label(mapping).c_str(),
+            mapping.name.c_str(),
             mapping.base->start);
 }
 

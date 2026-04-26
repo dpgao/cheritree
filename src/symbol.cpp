@@ -5,11 +5,15 @@
  *  Copyright (c) 2026, Dapeng Gao.
  */
 
+#include <sys/elf_common.h>
+#include <sys/types.h>
+
 #include <fcntl.h>
 #include <gelf.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <cstring>
 #include <unordered_map>
 
 #include "symbol.h"
@@ -35,8 +39,8 @@ static bool keep_symbol(const GElf_Sym &sym)
 static std::vector<symbol_t> load_symbols(Elf *elf, unsigned int wanted_type)
 {
     std::vector<symbol_t> syms;
-    Elf_Scn *scn = NULL;
 
+    Elf_Scn *scn = NULL;
     while ((scn = elf_nextscn(elf, scn)) != NULL) {
 
         GElf_Shdr shdr;
@@ -45,13 +49,10 @@ static std::vector<symbol_t> load_symbols(Elf *elf, unsigned int wanted_type)
 
         Elf_Data *data = NULL;
         while ((data = elf_getdata(scn, data)) != NULL) {
-            size_t i = 1;
 
-            while (true) {
+            GElf_Sym sym;
+            for (size_t i = 1; gelf_getsym(data, i, &sym) != NULL; ++i) {
 
-                GElf_Sym sym;
-                if (gelf_getsym(data, i++, &sym) == NULL)
-                    break;
                 if (!keep_symbol(sym))
                     continue;
 
@@ -77,6 +78,74 @@ static std::vector<symbol_t> load_symbols(Elf *elf, unsigned int wanted_type)
     return syms;
 }
 
+static std::vector<compart_t> load_comparts(Elf *elf)
+{
+    std::vector<compart_t> comparts;
+    size_t shstrndx;
+
+    if (elf_getshdrstrndx(elf, &shstrndx) != 0)
+        return comparts;
+
+    const char *c18nstrtab = NULL;
+    size_t c18nstrsize = 0;
+
+    Elf_Scn *scn = NULL;
+    while ((scn = elf_nextscn(elf, scn)) != NULL) {
+
+        GElf_Shdr shdr;
+        if (gelf_getshdr(scn, &shdr) == NULL || shdr.sh_type != SHT_STRTAB ||
+            (shdr.sh_flags & SHF_ALLOC) == 0)
+            continue;
+
+        const char *name = elf_strptr(elf, shstrndx, shdr.sh_name);
+        if (name == NULL || strcmp(name, ".c18nstrtab") != 0)
+            continue;
+
+        Elf_Data *data = elf_getdata(scn, NULL);
+        if (data == NULL || data->d_buf == NULL)
+            return comparts;
+
+        c18nstrtab = static_cast<const char *>(data->d_buf);
+        c18nstrsize = data->d_size;
+        break;
+    }
+
+    if (c18nstrtab == NULL || c18nstrsize == 0)
+        return comparts;
+
+    size_t phnum;
+    if (elf_getphdrnum(elf, &phnum) != 0)
+        return comparts;
+
+    for (size_t i = 0; i < phnum; i++) {
+        GElf_Phdr phdr;
+
+        if (gelf_getphdr(elf, i, &phdr) == NULL || phdr.p_type != PT_C18N_NAME)
+            continue;
+        if (phdr.p_paddr >= c18nstrsize)
+            continue;
+
+        const char *name = c18nstrtab + phdr.p_paddr;
+        const char *terminator = static_cast<const char *>(memchr(name, '\0',
+            c18nstrsize - phdr.p_paddr));
+        if (terminator == NULL)
+            continue;
+
+        comparts.emplace_back(compart_t{
+            static_cast<addr_t>(phdr.p_vaddr),
+            static_cast<addr_t>(phdr.p_vaddr + phdr.p_memsz),
+            std::string(name, terminator)
+        });
+    }
+
+    std::stable_sort(comparts.begin(), comparts.end(),
+        [](const compart_t &a, const compart_t &b) {
+            return a.start < b.start;
+        });
+
+    return comparts;
+}
+
 std::shared_ptr<image_t> load_image(const std::string &path)
 {
     if (path.empty() || elf_version(EV_CURRENT) == EV_NONE)
@@ -87,6 +156,7 @@ std::shared_ptr<image_t> load_image(const std::string &path)
         return it->second;
 
     std::vector<symbol_t> symbols;
+    std::vector<compart_t> comparts;
 
     int fd = open(path.c_str(), O_RDONLY);
     if (fd >= 0) {
@@ -98,6 +168,7 @@ std::shared_ptr<image_t> load_image(const std::string &path)
                 symbols = load_symbols(elf, SHT_SYMTAB);
                 if (symbols.empty())
                     symbols = load_symbols(elf, SHT_DYNSYM);
+                comparts = load_comparts(elf);
             }
             elf_end(elf);
         }
@@ -106,7 +177,8 @@ std::shared_ptr<image_t> load_image(const std::string &path)
 
     auto image = std::make_shared<image_t>(image_t{
         path,
-        std::move(symbols)
+        std::move(symbols),
+        std::move(comparts)
     });
     it->second = image;
 
@@ -140,4 +212,17 @@ bool image_t::has_symbol(addr_t base, addr_t start, addr_t end) const
         });
 
     return it != symbols.end() && base + it->value < end;
+}
+
+const std::string *image_t::find_compart(addr_t start, addr_t end) const
+{
+    auto it = std::upper_bound(comparts.begin(), comparts.end(), start,
+        [](addr_t value, const compart_t &compart) {
+            return value < compart.start;
+        });
+
+    if (it != comparts.begin() && end <= --it->end)
+        return &it->name;
+
+    return NULL;
 }
