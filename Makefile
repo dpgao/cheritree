@@ -5,6 +5,7 @@ all:	libcheritree.so libcheritreestub.a
 libcheritree.so: src/cheritree.cpp src/capabilities.cpp src/mapping.cpp src/symbol.cpp
 	c++ -shared $(CXXFLAGS) \
 		src/cheritree.cpp src/capabilities.cpp src/mapping.cpp src/symbol.cpp \
+		/usr/lib/libprocstat.a \
 		-Wl,--version-script=src/cheritree.map \
 		-nodefaultlibs -lc -Wl,-Bstatic -lc++ -lcxxrt -lgcc_eh -Wl,-Bdynamic \
 		-o libcheritree.so

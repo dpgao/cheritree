@@ -36,6 +36,8 @@ def load_trace(path):
 
 
 def parse_args():
+    label_modes = ("no", "library")
+    edge_modes = ("no", "library", "mapping")
     parser = argparse.ArgumentParser(
         description="Visualize CHERI capability address space reachability.")
     parser.add_argument("trace",
@@ -62,7 +64,17 @@ def parse_args():
                              "mapping's protection bits.")
     parser.add_argument("--all-mappings", action="store_true",
                         help="Show all mappings, including unreachable ones.")
-    return parser.parse_args()
+    parser.add_argument("--label", choices=label_modes, default="library",
+                        help="Label granularity: no labels, or one label per "
+                             "library/base mapping (default: library).")
+    parser.add_argument("--edge", choices=edge_modes, default="mapping",
+                        help="Vertical edge granularity: none, per library/"
+                             "base mapping, or per mapping "
+                             "(default: mapping).")
+    args = parser.parse_args()
+    if args.edge == "no":
+        args.label = "no"
+    return args
 
 
 @dataclass
@@ -157,6 +169,13 @@ class CoordSystem:
         ax.plot([0, self.total_width], [rect_h, rect_h],
                 color="black", linewidth=1.0, clip_on=False)
 
+    def draw_sides(self, ax, rect_h):
+        """Draw the left and right vertical sides of the address-space rectangle."""
+        ax.plot([0, 0], [0, rect_h],
+                color="black", linewidth=1.0, clip_on=False)
+        ax.plot([self.total_width, self.total_width], [0, rect_h],
+                color="black", linewidth=1.0, clip_on=False)
+
 
 @dataclass
 class Interval:
@@ -228,12 +247,8 @@ class BaseGroup:
     def name(self):
         return self._name
 
-    def draw(self, ax, coord_sys, fig_height, bracket_y, tick_h, label_y,
-             trailing=False):
-        """
-        Draw the bracket and rotated label below the address-space rectangle.
-        """
-        # Vertical lines at mapping boundaries; thicker at group boundaries.
+    def draw_mapping_edges(self, ax, coord_sys, fig_height, trailing=False):
+        """Draw vertical edges at every mapping boundary."""
         for i, m in enumerate(self.mappings):
             x = coord_sys.compress(m.start)
             ax.plot([x, x], [0, fig_height],
@@ -246,6 +261,19 @@ class BaseGroup:
             ax.plot([x, x], [0, fig_height],
                     color="black", linewidth=1.0, clip_on=False)
 
+    def draw_library_edge(self, ax, coord_sys, fig_height, trailing=False):
+        """Draw vertical edges only at base-mapping boundaries."""
+        x = coord_sys.compress(self.mappings[0].start)
+        ax.plot([x, x], [0, fig_height],
+                color="black", linewidth=1.0, clip_on=False)
+
+        if trailing:
+            x = coord_sys.compress(self.mappings[-1].end)
+            ax.plot([x, x], [0, fig_height],
+                    color="black", linewidth=1.0, clip_on=False)
+
+    def draw_label(self, ax, coord_sys, bracket_y, tick_h, label_y):
+        """Draw the bracket and rotated label for this base mapping."""
         if self._name:
             x_min = coord_sys.compress(self.mappings[0].start)
             x_max = coord_sys.compress(self.mappings[-1].end)
@@ -360,7 +388,8 @@ def compute_intervals(mappings, caps, mask_prot=False, all_mappings=False):
 
 
 def render_figure(intervals, coord_sys, mappings,
-                  fig_width=3.25, fig_height=0.5, font_size=9):
+                  fig_width=3.25, fig_height=0.5, font_size=9,
+                  label_mode="library", edge_mode="mapping"):
     """Render the address-space figure and return the matplotlib Figure."""
     plt.rcParams.update({
         "font.family": "serif",
@@ -369,7 +398,7 @@ def render_figure(intervals, coord_sys, mappings,
         "hatch.linewidth": 0.5,
     })
 
-    y_lo = -1.0                      # room for bracket labels below
+    y_lo = -1.0 if label_mode != "no" else 0.0
     y_hi = fig_height + 0.5          # room for legend above
     fig, ax = plt.subplots(figsize=(fig_width, y_hi - y_lo))
 
@@ -380,15 +409,24 @@ def render_figure(intervals, coord_sys, mappings,
 
     # Top and bottom edges.
     coord_sys.draw_edges(ax, fig_height)
+    if edge_mode == "no":
+        coord_sys.draw_sides(ax, fig_height)
 
-    # Bracket labels.
-    bracket_y = -0.025
-    tick_h    =  0.025
-    label_y   = bracket_y - tick_h - 0.025
     for i, ms in enumerate(mappings.values()):
         group = BaseGroup(ms)
-        group.draw(ax, coord_sys, fig_height, bracket_y, tick_h, label_y,
-                   trailing=(i == len(mappings) - 1))
+        trailing = (i == len(mappings) - 1)
+        if edge_mode == "mapping":
+            group.draw_mapping_edges(ax, coord_sys, fig_height,
+                                     trailing=trailing)
+        elif edge_mode == "library":
+            group.draw_library_edge(ax, coord_sys, fig_height,
+                                    trailing=trailing)
+
+        if label_mode == "library":
+            bracket_y = -0.025
+            tick_h    =  0.025
+            label_y   = bracket_y - tick_h - 0.025
+            group.draw_label(ax, coord_sys, bracket_y, tick_h, label_y)
 
     # Legend.
     rect_top_frac = (fig_height + 0.125 - y_lo) / (y_hi - y_lo)
@@ -418,7 +456,8 @@ def main():
 
     fig = render_figure(intervals, coord_sys, mappings,
                         fig_width=args.width, fig_height=args.height,
-                        font_size=args.font_size)
+                        font_size=args.font_size,
+                        label_mode=args.label, edge_mode=args.edge)
 
     if args.why_brown:
         for interval in intervals:

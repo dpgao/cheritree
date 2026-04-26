@@ -18,10 +18,13 @@ struct mapping_t {
     mapping_t *base;
     addr_t start;
     addr_t end;
-    int flags;
+    unsigned int prot_read:1;
+    unsigned int prot_write:1;
+    unsigned int prot_exec:1;
+    unsigned int prot_read_cap:1;
+    unsigned int prot_write_cap:1;
 
-    mapping_t(addr_t start, addr_t end, int flags, const std::string &path)
-        : base(this), start(start), end(end), flags(flags), path(path) {}
+    mapping_t(addr_t start, addr_t end, int prot, const std::string &path);
 
     int prot() const;
 };
