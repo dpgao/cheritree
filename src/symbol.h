@@ -8,18 +8,25 @@
 #ifndef _CHERITREE_SYMBOL_H_
 #define _CHERITREE_SYMBOL_H_
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "util.h"
 
 struct symbol_t {
     std::string name;
     addr_t value;
-    char type;
 };
 
-void cheritree_load_symbols(const std::string &path);
-symbol_t *cheritree_find_symbol(const std::string &path, addr_t base, addr_t addr);
-const char *cheritree_find_type(const std::string &path, addr_t base, addr_t start, addr_t end);
+struct image_t {
+    const std::string path;
+    std::vector<symbol_t> symbols;
+
+    const symbol_t *find_symbol(addr_t base, addr_t addr) const;
+    bool has_symbol(addr_t base, addr_t start, addr_t end) const;
+};
+
+std::shared_ptr<image_t> load_image(const std::string &path);
 
 #endif // _CHERITREE_SYMBOL_H_

@@ -5,108 +5,141 @@
  *  Copyright (c) 2026, Dapeng Gao.
  */
 
-#include <cstdio>
-#include <cstdlib>
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <algorithm>
 #include <unordered_map>
-#include <vector>
+
+#include <gelf.h>
+#include <libelf.h>
 
 #include "symbol.h"
 
-using image = std::vector<symbol_t>;
+static std::unordered_map<std::string, std::shared_ptr<image_t>> images;
 
-static std::unordered_map<std::string, image> images;
-
-static image *find_image(const std::string &path)
+static bool keep_symbol(const GElf_Sym &sym)
 {
-    if (path.empty())
-        return NULL;
+    unsigned char bind = GELF_ST_BIND(sym.st_info);
 
-    auto it = images.find(path);
-    return it != images.end() ? &it->second : NULL;
+    if (bind != STB_LOCAL && bind != STB_GLOBAL && bind != STB_WEAK)
+        return false;
+    if (sym.st_shndx == SHN_UNDEF)
+        return false;
+    if (sym.st_value == 0 && GELF_ST_TYPE(sym.st_info) == STT_FILE)
+        return false;
+    if (sym.st_name == 0)
+        return false;
+
+    return true;
 }
 
-static int load_symbol(char *buffer, std::vector<symbol_t> &syms)
+static std::vector<symbol_t> load_symbols(Elf *elf, unsigned int wanted_type)
 {
-    addr_t value;
-    char type, name[1024];
+    std::vector<symbol_t> syms;
+    Elf_Scn *scn = NULL;
 
-    if (sscanf(buffer, "%" PRIxADDR " %c %1023s", &value, &type, name) != 3)
-        return 0;
+    while ((scn = elf_nextscn(elf, scn)) != NULL) {
 
-    if (name[0] == '$')
-        return 1;
+        GElf_Shdr shdr;
+        if (gelf_getshdr(scn, &shdr) == NULL || shdr.sh_type != wanted_type)
+            continue;
 
-    syms.emplace_back(symbol_t{name, value, type});
-    return 1;
-}
+        Elf_Data *data = NULL;
+        while ((data = elf_getdata(scn, data)) != NULL) {
+            size_t i = 1;
 
-void cheritree_load_symbols(const std::string &path)
-{
-    char cmd[2048], buffer[2048];
+            while (true) {
 
-    if (find_image(path))
-        return;
+                GElf_Sym sym;
+                if (gelf_getsym(data, i++, &sym) == NULL)
+                    break;
+                if (!keep_symbol(sym))
+                    continue;
 
-    auto &img = images[path];
+                const char *name = elf_strptr(elf, shdr.sh_link, sym.st_name);
+                if (name == NULL)
+                    name = "(null)";
 
-    sprintf(cmd, "nm -ne --defined-only %s 2>/dev/null", path.c_str());
-    FILE *fp = popen(cmd, "r");
-    if (fp) {
-        while (fgets(buffer, sizeof(buffer), fp) != NULL)
-            if (!load_symbol(buffer, img))
-                break;
-        pclose(fp);
-    }
-
-    if (!img.empty()) return;
-
-    // Retry with dynamic symbols
-    sprintf(cmd, "nm -Dne --defined-only %s 2>/dev/null", path.c_str());
-    fp = popen(cmd, "r");
-    if (fp) {
-        while (fgets(buffer, sizeof(buffer), fp) != NULL)
-            if (!load_symbol(buffer, img))
-                break;
-        pclose(fp);
-    }
-}
-
-symbol_t *cheritree_find_symbol(const std::string &path,
-    addr_t base, addr_t addr)
-{
-    auto *img = find_image(path);
-
-    if (!img) return NULL;
-
-    int i = img->size();
-    while (--i >= 0) {
-        symbol_t &sym = (*img)[i];
-        if (base + sym.value <= addr)
-            return &sym;
-    }
-
-    return NULL;
-}
-
-const char *cheritree_find_type(const std::string &path,
-    addr_t base, addr_t start, addr_t end)
-{
-    auto *img = find_image(path);
-
-    if (!img) return NULL;
-
-    for (const auto &sym : *img) {
-        addr_t addr = base + sym.value;
-
-        if (addr > end)
-            break;
-
-        if (start <= addr && addr < end) {
-            if (strchr("Tt", sym.type)) return "text";
-            if (strchr("BCb", sym.type)) return "bss";
-            if (strchr("DRVdr", sym.type)) return "data";
+                syms.emplace_back(symbol_t{
+                    name,
+                    static_cast<addr_t>(sym.st_value)
+                });
+            }
         }
     }
 
+    std::stable_sort(syms.begin(), syms.end(),
+        [](const symbol_t &a, const symbol_t &b) {
+            if (a.value == b.value)
+                return a.name < b.name;
+            return a.value < b.value;
+        });
+
+    return syms;
+}
+
+std::shared_ptr<image_t> load_image(const std::string &path)
+{
+    if (path.empty() || elf_version(EV_CURRENT) == EV_NONE)
+        return {};
+
+    auto [it, inserted] = images.try_emplace(path, nullptr);
+    if (!inserted)
+        return it->second;
+
+    std::vector<symbol_t> symbols;
+
+    int fd = open(path.c_str(), O_RDONLY);
+    if (fd >= 0) {
+        Elf *elf = elf_begin(fd, ELF_C_READ, NULL);
+        if (elf != NULL && elf_kind(elf) == ELF_K_ELF) {
+            GElf_Ehdr ehdr;
+            if (gelf_getehdr(elf, &ehdr) != NULL &&
+                (ehdr.e_type == ET_EXEC || ehdr.e_type == ET_DYN)) {
+                symbols = load_symbols(elf, SHT_SYMTAB);
+                if (symbols.empty())
+                    symbols = load_symbols(elf, SHT_DYNSYM);
+            }
+            elf_end(elf);
+        }
+        close(fd);
+    }
+
+    auto image = std::make_shared<image_t>(image_t{
+        path,
+        std::move(symbols)
+    });
+    it->second = image;
+
+    return image;
+}
+
+const symbol_t *image_t::find_symbol(addr_t base, addr_t addr) const
+{
+    if (addr < base)
+        return NULL;
+
+    auto it = std::upper_bound(symbols.begin(), symbols.end(), addr - base,
+        [](addr_t value, const symbol_t &sym) {
+            return value < sym.value;
+        });
+
+    if (it != symbols.begin())
+        return &*std::prev(it);
+
     return NULL;
+}
+
+bool image_t::has_symbol(addr_t base, addr_t start, addr_t end) const
+{
+    if (start < base)
+        return false;
+
+    auto it = std::lower_bound(symbols.begin(), symbols.end(), start - base,
+        [](const symbol_t &sym, addr_t value) {
+            return sym.value < value;
+        });
+
+    return it != symbols.end() && base + it->value < end;
 }

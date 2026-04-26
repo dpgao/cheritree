@@ -194,7 +194,7 @@ static bool is_visited(permmap_t &map, void *vaddr, bool via_trampoline = false)
 static void print_symbol(addr_t addr)
 {
     mapping_t &mapping = cheritree_resolve_mapping(addr);
-    symbol_t *symbol = NULL;
+    const symbol_t *symbol = NULL;
     addr_t offset = 0;
 
     if (cheritree_json_output)
@@ -202,9 +202,9 @@ static void print_symbol(addr_t addr)
     else
         fprintf(cheritree_output, "%s", mapping.name.c_str());
 
-    if (!mapping.name.empty()) {
+    if (mapping.image) {
+        symbol = mapping.image->find_symbol(mapping.base->start, addr);
         offset = addr - mapping.base->start;
-        symbol = cheritree_find_symbol(mapping.path, mapping.base->start, addr);
         if (symbol && !symbol->name.empty())
             offset -= symbol->value;
     }

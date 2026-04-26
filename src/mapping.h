@@ -8,14 +8,17 @@
 #ifndef _CHERITREE_MAPPING_H_
 #define _CHERITREE_MAPPING_H_
 
+#include <memory>
 #include <string>
 
 #include "util.h"
 
+struct image_t;
+
 struct mapping_t {
-    const std::string path;
     std::string name;
     mapping_t *base;
+    std::shared_ptr<image_t> image;
     addr_t start;
     addr_t end;
     unsigned int prot_read:1;
@@ -24,7 +27,7 @@ struct mapping_t {
     unsigned int prot_read_cap:1;
     unsigned int prot_write_cap:1;
 
-    mapping_t(addr_t start, addr_t end, int prot, const std::string &path);
+    mapping_t(addr_t start, addr_t end, int prot);
 
     int prot() const;
 };

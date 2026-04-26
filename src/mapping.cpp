@@ -30,21 +30,27 @@ static std::vector<std::unique_ptr<mapping_t>> mappings;
 static mapping_t mapping_zero{
     std::numeric_limits<addr_t>::max(),
     std::numeric_limits<addr_t>::max(),
-    0,
-    ""
+    0
 };
 
-mapping_t::mapping_t(addr_t start, addr_t end, int protection,
-    const std::string &path)
-    : path(path), base(this), start(start), end(end),
-      prot_read((protection & KVME_PROT_READ) != 0),
-      prot_write((protection & KVME_PROT_WRITE) != 0),
-      prot_exec((protection & KVME_PROT_EXEC) != 0),
-      prot_read_cap((protection & (KVME_PROT_READ | KVME_PROT_CAP)) ==
+mapping_t::mapping_t(addr_t start, addr_t end, int prot)
+    : base(this), start(start), end(end),
+      prot_read((prot & KVME_PROT_READ) != 0),
+      prot_write((prot & KVME_PROT_WRITE) != 0),
+      prot_exec((prot & KVME_PROT_EXEC) != 0),
+      prot_read_cap((prot & (KVME_PROT_READ | KVME_PROT_CAP)) ==
           (KVME_PROT_READ | KVME_PROT_CAP)),
-      prot_write_cap((protection & (KVME_PROT_WRITE | KVME_PROT_CAP)) ==
+      prot_write_cap((prot & (KVME_PROT_WRITE | KVME_PROT_CAP)) ==
           (KVME_PROT_WRITE | KVME_PROT_CAP))
 {
+}
+
+static const std::string &mapping_label(const mapping_t &mapping)
+{
+    if (mapping.image)
+        return mapping.image->path;
+
+    return mapping.name;
 }
 
 inline int mapping_t::prot() const
@@ -64,7 +70,7 @@ void cheritree_set_mapping_name(mapping_t &mapping,
         mapping.name = "[" + owner + "!" + name + "]";
 }
 
-static void add_mapping_name(mapping_t &mapping)
+static void infer_mapping_name(mapping_t &mapping)
 {
     addr_t start = mapping.start, end = mapping.end;
 
@@ -74,7 +80,7 @@ static void add_mapping_name(mapping_t &mapping)
             return mp->start < value;
         });
     if (it != mappings.end() &&
-        (*it)->start == start && (*it)->end == end && (*it)->path.empty()) {
+        (*it)->start == start && (*it)->end == end && !(*it)->image) {
         mapping.name = (*it)->name;
         return;
     }
@@ -95,7 +101,7 @@ static void add_mapping_name(mapping_t &mapping)
 static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
     addr_t start, addr_t end, int prot, const std::string &path)
 {
-    auto mapping = std::make_unique<mapping_t>(start, end, prot, path);
+    auto mapping = std::make_unique<mapping_t>(start, end, prot);
     mapping_t *base = nullptr;
     auto it = v.rbegin();
 
@@ -107,36 +113,40 @@ static void add_mapping(std::vector<std::unique_ptr<mapping_t>> &v,
         cursor = mp->start;
 
         // The first file-backed mapping in the chain decides the base.
-        if (!mp->path.empty()) {
+        if (mp->image) {
             base = mp->base;
             break;
         }
     }
 
     if (path.empty()) {
-        if (base && cheritree_find_type(base->path, base->start, start, end)) {
+        if (base && base->image->has_symbol(base->start, start, end)) {
             while (it != v.rbegin()) {
                 --it;
                 it->get()->base = base;
+                it->get()->image = base->image;
             }
             mapping->base = base;
+            mapping->image = base->image;
             mapping->name = base->name;
         } else
-            add_mapping_name(*mapping);
+            infer_mapping_name(*mapping);
     } else {
-        if (base && path == base->path) {
+        mapping->image = load_image(path);
+
+        if (base && base->image == mapping->image) {
             while (it != v.rbegin()) {
                 --it;
                 it->get()->base = base;
+                it->get()->image = base->image;
             }
             mapping->base = base;
+            mapping->image = base->image;
             mapping->name = base->name;
         } else
             mapping->name = path.rfind('/') == std::string::npos ?
                             path :
                             path.substr(path.rfind('/') + 1);
-
-        cheritree_load_symbols(path);
     }
 
     v.push_back(std::move(mapping));
@@ -165,13 +175,13 @@ static void print_mapping(const mapping_t &mapping)
             mapping.prot_exec ? "true" : "false",
             mapping.prot_read_cap ? "true" : "false",
             mapping.prot_write_cap ? "true" : "false",
-            (mapping.path.empty() ? mapping.name : mapping.path).c_str(),
+            mapping_label(mapping).c_str(),
             mapping.base->start);
     else
         fprintf(cheritree_output,
             "%#" PRIxADDR "-%#" PRIxADDR " %s %s [%#" PRIxADDR "]\n",
             mapping.start, mapping.end, s,
-            (mapping.path.empty() ? mapping.name : mapping.path).c_str(),
+            mapping_label(mapping).c_str(),
             mapping.base->start);
 }
 
