@@ -300,6 +300,11 @@ static void print_capability_tree(permmap_t &map,
     if (target && cheri_base_get(target) && !is_visited(map, target, true))
         print_address(target, origin, depth, true, first);
 
+    struct dl_c18n_compart_state state;
+    void *tf = dl_c18n_get_trusted_stack((uintptr_t)vaddr);
+    if (tf && dl_c18n_pop_trusted_stack(&state, tf) != NULL)
+        print_address(state.pc, origin, depth, true, first);
+
     if ((cheri_perms_get(vaddr) & CHERI_PERM_LOAD) == 0 ||
         (cheri_perms_get(vaddr) & CHERI_PERM_LOAD_CAP) == 0)
         return;
