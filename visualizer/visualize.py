@@ -273,8 +273,9 @@ class Mapping(Segment):
         return self.is_reachable
 
 
-def draw_bracket_label(ax, x0, x1, text, bracket_y, tick_h, label_y):
-    """Draw a bracket spanning [x0, x1] and a rotated label."""
+def draw_bracket_label(ax, x0, x1, text, bracket_y, tick_h, label_y,
+                       label_rotation):
+    """Draw a bracket spanning [x0, x1] and a label below it."""
     if not text:
         return
 
@@ -282,9 +283,11 @@ def draw_bracket_label(ax, x0, x1, text, bracket_y, tick_h, label_y):
     ax.plot([x0, x0, x1, x1],
             [bracket_y, bracket_y - tick_h, bracket_y - tick_h, bracket_y],
             color="black", linewidth=1.0, clip_on=False)
-    ax.text(x_center, label_y, text,
-            ha="right", va="top",
-            rotation=30, rotation_mode="anchor")
+    if label_rotation == 0:
+        ax.text(x_center, label_y, text, ha="center", va="top")
+    else:
+        ax.text(x_center, label_y, text, ha="right", va="top",
+                rotation=label_rotation, rotation_mode="anchor")
 
 
 @dataclass
@@ -334,16 +337,6 @@ class Compart(Segment):
 
         return super().compute_layout(x0)
 
-    def draw_edges(self, ax, fig_height, edge_mode, trailing):
-        if edge_mode != Mode.COMPART:
-            return
-
-        ax.plot([self.x0, self.x0], [0, fig_height],
-                color="black", linewidth=1.0, clip_on=False)
-        if trailing:
-            ax.plot([self.x1, self.x1], [0, fig_height],
-                    color="black", linewidth=1.0, clip_on=False)
-
 @dataclass
 class Library(Segment):
 
@@ -360,19 +353,23 @@ class Library(Segment):
         self.comparts[-1].mappings.append(mapping)
 
     def draw_edges(self, ax, fig_height, edge_mode, trailing):
-        for i, compart in enumerate(self.comparts):
-            compart.draw_edges(ax, fig_height, edge_mode,
-                               trailing=trailing and i + 1 == len(self.comparts))
-
-        if edge_mode == Mode.LIBRARY:
+        if edge_mode >= Mode.LIBRARY:
             ax.plot([self.x0, self.x0], [0, fig_height],
                     color="black", linewidth=1.0, clip_on=False)
-
             if trailing:
                 ax.plot([self.x1, self.x1], [0, fig_height],
                         color="black", linewidth=1.0, clip_on=False)
 
-    def draw_labels(self, ax, bracket_y, tick_h, label_y, label_mode):
+        if edge_mode == Mode.COMPART:
+            for i in range(1, len(self.comparts)):
+                if self.comparts[i - 1].label == self.comparts[i].label:
+                    continue
+                ax.plot([self.comparts[i].x0, self.comparts[i].x0],
+                        [0, fig_height],
+                        color="black", linewidth=1.0, clip_on=False)
+
+    def draw_labels(self, ax, bracket_y, tick_h, label_y,
+                    label_mode, label_rotation):
         if label_mode == Mode.COMPART:
             run_start = 0
             while run_start < len(self.comparts):
@@ -386,13 +383,15 @@ class Library(Segment):
                                    self.comparts[run_start].x0,
                                    self.comparts[run_end - 1].x1,
                                    label,
-                                   bracket_y, tick_h, label_y)
+                                   bracket_y, tick_h, label_y,
+                                   label_rotation)
                 run_start = run_end
             return
 
         if label_mode == Mode.LIBRARY:
             draw_bracket_label(ax, self.x0, self.x1, self.name,
-                               bracket_y, tick_h, label_y)
+                               bracket_y, tick_h, label_y,
+                               label_rotation)
 
 
 def split_mapping_name(name):
@@ -452,7 +451,7 @@ class CoordSystem(Segment):
         ax.plot([self.x1, self.x1], [0, rect_h],
                 color="black", linewidth=1.0, clip_on=False)
 
-    def draw(self, ax, rect_h, edge_mode, label_mode):
+    def draw(self, ax, rect_h, edge_mode, label_mode, label_rotation):
         bracket_y = -0.025
         tick_h = 0.025
         label_y = bracket_y - tick_h - 0.025
@@ -460,7 +459,8 @@ class CoordSystem(Segment):
             library.draw(ax, rect_h)
             library.draw_edges(ax, rect_h, edge_mode,
                                trailing=i + 1 == len(self.libraries))
-            library.draw_labels(ax, bracket_y, tick_h, label_y, label_mode)
+            library.draw_labels(ax, bracket_y, tick_h, label_y,
+                                label_mode, label_rotation)
 
         self.draw_outline(ax, rect_h)
         if edge_mode == Mode.NO:
@@ -499,7 +499,7 @@ def collect_visible_comparts(coord_systems):
 
 
 def render_figure(coord_systems, fig_width, fig_height, font_size,
-                  edge_mode, label_mode):
+                  edge_mode, label_mode, label_rotation):
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Linux Libertine", "Times"],
@@ -530,7 +530,8 @@ def render_figure(coord_systems, fig_width, fig_height, font_size,
         y_lo = -1.0 if current_label_mode > Mode.NO else 0.0
         y_hi = fig_height + 0.5 if index == 0 else fig_height
 
-        coord_sys.draw(ax, fig_height, edge_mode, current_label_mode)
+        coord_sys.draw(ax, fig_height,
+                       edge_mode, current_label_mode, label_rotation)
 
         ax.set_xlim(coord_systems[0].x0, coord_systems[0].x1)
         ax.set_ylim(y_lo, y_hi)
@@ -581,6 +582,10 @@ def parse_args():
     parser.add_argument("--label", choices=Mode.choices(), default="compart",
                         help="Label granularity: none, per library, or per "
                              "compartment (default: compart).")
+    parser.add_argument("--label-rotation", type=float, default=45,
+                        metavar="DEG",
+                        help="Label rotation in degrees (default: 45). "
+                             "Use 0 to center labels horizontally.")
     args = parser.parse_args()
     args.edge = Mode.parse(args.edge)
     args.label = Mode.parse(args.label)
@@ -612,7 +617,8 @@ def main():
                         fig_height=args.height,
                         font_size=args.font_size,
                         edge_mode=args.edge,
-                        label_mode=args.label)
+                        label_mode=args.label,
+                        label_rotation=args.label_rotation)
 
     if args.why_brown:
         for coord_sys in coord_systems:

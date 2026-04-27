@@ -17,6 +17,7 @@ python3 visualize.py TRACE1.json [TRACE2.json ...] [-o OUTPUT] [options]
 | `-W INCHES` | Figure width in inches (default: 3.25). |
 | `-H INCHES` | Height of the colored rectangle in inches (default: 0.5). |
 | `-f PT` | Font size in points (default: 9). |
+| `--label-rotation DEG` | Label rotation in degrees (default: 45). Use `0` to center labels horizontally. |
 | `--why-brown` | For each RWX (brown) interval, print the covering capabilities. |
 | `--mask-prot` | AND capability permissions with the mapping's protection bits. |
 | `--all-mappings` | Show all mappings, even those unreachable from any capability. |
@@ -26,7 +27,9 @@ python3 visualize.py TRACE1.json [TRACE2.json ...] [-o OUTPUT] [options]
 The visualizer groups sorted mappings into contiguous `Library` objects by
 stripped library name (for example, `libc` becomes `c`), and each library into
 contiguous `Compart` objects by sub-library name. Compartment labels have the
-form `library[:sub-library]`.
+form `library[:sub-library]`. Adjacent compartments with the same displayed
+label share one combined label span, and compartment edges between them are
+suppressed.
 
 When multiple traces are given, the plots are stacked vertically in one figure.
 The mappings from the first trace define the shared horizontal layout for every
@@ -47,4 +50,7 @@ python3 visualize.py trace.json -o figure.pgf --edge=compart --label=compart
 
 # Stack two traces using the first trace's mapping layout
 python3 visualize.py trace-a.json trace-b.json -o figure.pdf --label=no
+
+# Horizontal centered labels
+python3 visualize.py trace.json --label-rotation=0
 ```
