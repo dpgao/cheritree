@@ -5,7 +5,7 @@
  *  Copyright (c) 2026, Dapeng Gao.
  */
 
-#include <sys/param.h>
+#include <sys/types.h>
 #include <sys/sysctl.h>
 #include <sys/user.h>
 

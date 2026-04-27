@@ -5,8 +5,8 @@
  *  Copyright (c) 2026, Dapeng Gao.
  */
 
-#include <sys/elf_common.h>
 #include <sys/types.h>
+#include <sys/elf_common.h>
 
 #include <fcntl.h>
 #include <gelf.h>
@@ -221,7 +221,7 @@ const std::string *image_t::find_compart(addr_t start, addr_t end) const
             return value < compart.start;
         });
 
-    if (it != comparts.begin() && end <= --it->end)
+    if (it != comparts.begin() && end <= (--it)->end)
         return &it->name;
 
     return NULL;

@@ -5,6 +5,7 @@
  */
 
 #include <cheri/cheric.h>
+#include <link.h>
 
 #include <cstdio>
 #include <map>
@@ -25,6 +26,8 @@ extern FILE *cheritree_output;
 
 uint64_t excluded_roots;
 void *cheritree_regs[CHERITREE_NREGS];
+
+static void *topmost_frame;
 
 static bool root_is_excluded(int root)
 {
@@ -300,10 +303,14 @@ static void print_capability_tree(permmap_t &map,
     if (target && cheri_base_get(target) && !is_visited(map, target, true))
         print_address(target, origin, depth, true, first);
 
-    struct dl_c18n_compart_state state;
-    void *tf = dl_c18n_get_trusted_stack((uintptr_t)vaddr);
-    if (tf && dl_c18n_pop_trusted_stack(&state, tf) != NULL)
-        print_address(state.pc, origin, depth, true, first);
+    if (topmost_frame &&
+        dl_c18n_is_trampoline((uintptr_t)vaddr, topmost_frame)) {
+        struct dl_c18n_compart_state state;
+        void *tf = dl_c18n_pop_trusted_stack(&state, topmost_frame);
+        if (tf && state.pc && cheri_base_get(state.pc) && !is_visited(map, state.pc, true))
+            print_address(state.pc, origin, depth, true, first);
+        topmost_frame = nullptr;
+    }
 
     if ((cheri_perms_get(vaddr) & CHERI_PERM_LOAD) == 0 ||
         (cheri_perms_get(vaddr) & CHERI_PERM_LOAD_CAP) == 0)
@@ -336,6 +343,13 @@ void cheritree_print_capabilities()
     is_visited(map, &cheritree_regs);
     is_visited(map, (void *)&_cheritree_init);
     is_visited(map, (void *)&_cheritree_print);
+
+    void *tf = dl_c18n_get_trusted_stack(0);
+    if (tf) {
+        struct dl_c18n_compart_state state;
+        // Get topmost frame for caller
+        topmost_frame = dl_c18n_pop_trusted_stack(&state, tf);
+    }
 
     if (cheritree_json_output)
         fprintf(cheritree_output, "[\n");
