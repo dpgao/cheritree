@@ -35,6 +35,8 @@ class Mode(IntEnum):
 class Segment(ABC):
     """A drawable hierarchy node laid out from left to right."""
 
+    is_reachable = False
+
     @property
     @abstractmethod
     def children(self):
@@ -49,11 +51,11 @@ class Segment(ABC):
         return children[-1].x1 if (children := self.children) else 0.0
 
     def compute_intervals(self, mask_prot):
-        reachable = False
+        self.is_reachable = False
         for child in self.children:
             if child.compute_intervals(mask_prot):
-                reachable = True
-        return reachable
+                self.is_reachable = True
+        return self.is_reachable
 
     def iter_intervals(self):
         for child in self.children:
@@ -163,7 +165,6 @@ class Interval(Segment):
             self.all_sealed     = self.all_sealed     and cap.sealed
             self.all_trampoline = self.all_trampoline and cap.via_trampoline
 
-
 class LegendSet:
 
     _ENTRIES = {
@@ -226,6 +227,13 @@ class Mapping(Segment):
                    prot_write=m.get("prot_write", True),
                    prot_exec=m.get("prot_exec", True))
 
+    def clone(self):
+        return Mapping(start=self.start, end=self.end,
+                       name=self.name, base=self.base,
+                       prot_read=self.prot_read,
+                       prot_write=self.prot_write,
+                       prot_exec=self.prot_exec)
+
     def add_cap(self, cap):
         self.overlapping_caps.append(cap)
 
@@ -235,7 +243,9 @@ class Mapping(Segment):
             points.add(max(cap.base, self.start))
             points.add(min(cap.top, self.end))
 
-        covered = False
+        self.intervals = []
+        self.is_reachable = False
+
         sorted_points = sorted(points)
         for i in range(len(sorted_points) - 1):
             seg_start = sorted_points[i]
@@ -255,11 +265,12 @@ class Mapping(Segment):
                 interval.has_store   = interval.has_store   and self.prot_write
                 interval.has_execute = interval.has_execute and self.prot_exec
 
-            if interval.covered:
-                covered = True
             self.intervals.append(interval)
 
-        return covered
+            if interval.covered:
+                self.is_reachable = True
+
+        return self.is_reachable
 
 
 def draw_bracket_label(ax, x0, x1, text, bracket_y, tick_h, label_y):
@@ -273,7 +284,7 @@ def draw_bracket_label(ax, x0, x1, text, bracket_y, tick_h, label_y):
             color="black", linewidth=1.0, clip_on=False)
     ax.text(x_center, label_y, text,
             ha="right", va="top",
-            rotation=45, rotation_mode="anchor")
+            rotation=30, rotation_mode="anchor")
 
 
 @dataclass
@@ -289,8 +300,6 @@ class Compart(Segment):
 
     @property
     def label(self):
-        if self.library.name and self.name:
-            return f"{self.library.name}:{self.name}"
         if self.name:
             return self.name
         return self.library.name
@@ -335,14 +344,6 @@ class Compart(Segment):
             ax.plot([self.x1, self.x1], [0, fig_height],
                     color="black", linewidth=1.0, clip_on=False)
 
-    def draw_labels(self, ax, bracket_y, tick_h, label_y, label_mode):
-        if label_mode != Mode.COMPART:
-            return
-
-        draw_bracket_label(ax, self.x0, self.x1, self.label,
-                           bracket_y, tick_h, label_y)
-
-
 @dataclass
 class Library(Segment):
 
@@ -354,23 +355,9 @@ class Library(Segment):
         return self.comparts
 
     def add_mapping(self, mapping, compart_name):
-        if not self.comparts or self.comparts[-1].name != compart_name:
+        if not compart_name or not self.comparts or self.comparts[-1].name != compart_name:
             self.comparts.append(Compart(library=self, name=compart_name))
         self.comparts[-1].mappings.append(mapping)
-
-    def compute_intervals(self, mask_prot, all_mappings):
-        reachable = False
-        filtered = []
-
-        for compart in self.comparts:
-            compart_reachable = compart.compute_intervals(mask_prot)
-            if compart_reachable:
-                reachable = True
-            if compart_reachable or all_mappings:
-                filtered.append(compart)
-
-        self.comparts = filtered
-        return reachable
 
     def draw_edges(self, ax, fig_height, edge_mode, trailing):
         for i, compart in enumerate(self.comparts):
@@ -386,8 +373,22 @@ class Library(Segment):
                         color="black", linewidth=1.0, clip_on=False)
 
     def draw_labels(self, ax, bracket_y, tick_h, label_y, label_mode):
-        for compart in self.comparts:
-            compart.draw_labels(ax, bracket_y, tick_h, label_y, label_mode)
+        if label_mode == Mode.COMPART:
+            run_start = 0
+            while run_start < len(self.comparts):
+                label = self.comparts[run_start].label
+                run_end = run_start + 1
+                while (run_end < len(self.comparts) and
+                       self.comparts[run_end].label == label):
+                    run_end += 1
+
+                draw_bracket_label(ax,
+                                   self.comparts[run_start].x0,
+                                   self.comparts[run_end - 1].x1,
+                                   label,
+                                   bracket_y, tick_h, label_y)
+                run_start = run_end
+            return
 
         if label_mode == Mode.LIBRARY:
             draw_bracket_label(ax, self.x0, self.x1, self.name,
@@ -398,25 +399,26 @@ def split_mapping_name(name):
     """Split a mapping name into library name and sub-library name."""
     if name.startswith("[") and name.endswith("]"):
         name = name[1:-1]
-    path, compart = name, ""
+    stem, compart = name, ""
     if ":" in name:
-        path, compart = name.rsplit(":", 1)
-    path = path.rsplit("/", 1)[-1]
-    stem = re.sub(r'\.so(?:\.[\w.]+)?$', "", path)
+        stem, compart = name.rsplit(":", 1)
+    stem = stem.rsplit("/", 1)[-1]
     if stem.startswith("lib"):
         stem = stem[3:]
     if stem.startswith("private"):
         stem = stem[7:]
+    stem = re.sub(r"\.so(?:\.[\w.]+)?$", "", stem)
     return stem, compart
 
 
 class CoordSystem(Segment):
 
     def __init__(self, mappings):
+        self.name = "top"
         self.libraries = []
         for mapping in mappings:
             library_name, compart_name = split_mapping_name(mapping.name)
-            if not self.libraries or self.libraries[-1].name != library_name:
+            if not library_name or not self.libraries or self.libraries[-1].name != library_name:
                 self.libraries.append(Library(name=library_name))
             self.libraries[-1].add_mapping(mapping, compart_name)
 
@@ -424,13 +426,17 @@ class CoordSystem(Segment):
     def children(self):
         return self.libraries
 
-    def compute_intervals(self, mask_prot, all_mappings):
-        filtered = []
-        for library in self.libraries:
-            reachable = library.compute_intervals(mask_prot, all_mappings)
-            if reachable or all_mappings:
-                filtered.append(library)
-        self.libraries = filtered
+    def filter_comparts(self, visible_comparts):
+        filtered_libraries = []
+        for library_index, library in enumerate(self.libraries):
+            filtered_comparts = []
+            for compart_index, compart in enumerate(library.comparts):
+                if (library_index, compart_index) in visible_comparts:
+                    filtered_comparts.append(compart)
+            library.comparts = filtered_comparts
+            if library.comparts:
+                filtered_libraries.append(library)
+        self.libraries = filtered_libraries
 
     def draw_outline(self, ax, rect_h):
         """Draw the top and bottom edges of the address-space box."""
@@ -460,45 +466,17 @@ class CoordSystem(Segment):
         if edge_mode == Mode.NO:
             self.draw_sides(ax, rect_h)
 
-    def render_figure(self, fig_width, fig_height, font_size,
-                      edge_mode, label_mode):
-        plt.rcParams.update({
-            "font.family": "serif",
-            "font.serif": ["Linux Libertine", "Times"],
-            "font.size": font_size,
-            "hatch.linewidth": 0.5,
-        })
-
-        LegendSet.reset()
-
-        y_lo = -1.0 if label_mode >= Mode.LIBRARY else 0.0
-        y_hi = fig_height + 0.5
-        fig, ax = plt.subplots(figsize=(fig_width, y_hi - y_lo))
-
-        self.draw(ax, fig_height, edge_mode, label_mode)
-
-        rect_top_frac = (fig_height + 0.125 - y_lo) / (y_hi - y_lo)
-        ax.legend(handles=LegendSet.handles(), loc="lower left",
-                  bbox_to_anchor=(0, rect_top_frac), ncol=3,
-                  columnspacing=0.75, borderpad=0.25, labelspacing=0.25,
-                  handletextpad=0.5, borderaxespad=0.0)
-
-        ax.set_xlim(self.x0, self.x1)
-        ax.set_ylim(y_lo, y_hi)
-        ax.set_aspect("auto")
-        ax.axis("off")
-
-        return fig
-
-
-def load_trace(path):
+def load_trace(path, template_mappings=None):
     with open(path) as trace_file:
         trace = json.load(trace_file)
 
-    mappings = [Mapping.from_dict(mapping) for mapping in trace["mappings"]]
-    mappings = [mapping for mapping in mappings
-                if mapping.prot_read or mapping.prot_write or mapping.prot_exec]
-    mappings.sort(key=lambda mapping: mapping.start)
+    if template_mappings is None:
+        mappings = [Mapping.from_dict(mapping) for mapping in trace["mappings"]]
+        mappings = [mapping for mapping in mappings
+                    if mapping.prot_read or mapping.prot_write or mapping.prot_exec]
+        mappings.sort(key=lambda mapping: mapping.start)
+    else:
+        mappings = [mapping.clone() for mapping in template_mappings]
 
     for cap_data in trace["capabilities"]:
         cap = Capability.from_dict(cap_data)
@@ -510,11 +488,71 @@ def load_trace(path):
     return mappings
 
 
+def collect_visible_comparts(coord_systems):
+    visible_comparts = set()
+    for coord_sys in coord_systems:
+        for library_index, library in enumerate(coord_sys.libraries):
+            for compart_index, compart in enumerate(library.comparts):
+                if compart.is_reachable:
+                    visible_comparts.add((library_index, compart_index))
+    return visible_comparts
+
+
+def render_figure(coord_systems, fig_width, fig_height, font_size,
+                  edge_mode, label_mode):
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Linux Libertine", "Times"],
+        "font.size": font_size,
+        "hatch.linewidth": 0.5,
+    })
+
+    LegendSet.reset()
+
+    height_ratios = []
+    for index in range(len(coord_systems)):
+        axis_height = fig_height
+        if index == 0:
+            axis_height += 0.5
+        if index + 1 == len(coord_systems) and label_mode > Mode.NO:
+            axis_height += 1.0
+        height_ratios.append(axis_height)
+
+    fig, axes = plt.subplots(len(coord_systems), 1,
+                             figsize=(fig_width, sum(height_ratios)),
+                             squeeze=False,
+                             gridspec_kw={"height_ratios": height_ratios,
+                                          "hspace": 0.0})
+    axes = [axis[0] for axis in axes]
+
+    for index, (ax, coord_sys) in enumerate(zip(axes, coord_systems)):
+        current_label_mode = label_mode if index + 1 == len(coord_systems) else Mode.NO
+        y_lo = -1.0 if current_label_mode > Mode.NO else 0.0
+        y_hi = fig_height + 0.5 if index == 0 else fig_height
+
+        coord_sys.draw(ax, fig_height, edge_mode, current_label_mode)
+
+        ax.set_xlim(coord_systems[0].x0, coord_systems[0].x1)
+        ax.set_ylim(y_lo, y_hi)
+        ax.set_aspect("auto")
+        ax.axis("off")
+
+    top_y_lo = -1.0 if len(coord_systems) == 1 and label_mode > Mode.NO else 0.0
+    top_y_hi = fig_height + 0.5
+    rect_top_frac = (fig_height + 0.125 - top_y_lo) / (top_y_hi - top_y_lo)
+    axes[0].legend(handles=LegendSet.handles(), loc="lower left",
+                   bbox_to_anchor=(0, rect_top_frac), ncol=3,
+                   columnspacing=0.75, borderpad=0.25, labelspacing=0.25,
+                   handletextpad=0.5, borderaxespad=0.0)
+
+    return fig
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Visualize CHERI capability address space reachability.")
-    parser.add_argument("trace",
-                        help="CheriTree JSON trace file containing mappings "
+    parser.add_argument("traces", nargs="+",
+                        help="CheriTree JSON trace files containing mappings "
                              "and capabilities.")
     parser.add_argument("-o", "--output",
                         help="Output file. "
@@ -553,33 +591,45 @@ def parse_args():
 
 def main():
     args = parse_args()
-    mappings = load_trace(args.trace)
+    template_mappings = load_trace(args.traces[0])
+    coord_systems = [CoordSystem(template_mappings)]
+    for trace_path in args.traces[1:]:
+        coord_systems.append(CoordSystem(load_trace(trace_path, template_mappings)))
 
-    coord_sys = CoordSystem(mappings)
-    coord_sys.compute_intervals(mask_prot=args.mask_prot,
-                                all_mappings=args.all_mappings)
-    coord_sys.compute_layout(0.0)
-    fig = coord_sys.render_figure(fig_width=args.width,
-                                  fig_height=args.height,
-                                  font_size=args.font_size,
-                                  edge_mode=args.edge,
-                                  label_mode=args.label)
+    for coord_sys in coord_systems:
+        coord_sys.compute_intervals(mask_prot=args.mask_prot)
+
+    if not args.all_mappings:
+        visible_comparts = collect_visible_comparts(coord_systems)
+        for coord_sys in coord_systems:
+            coord_sys.filter_comparts(visible_comparts)
+
+    for coord_sys in coord_systems:
+        coord_sys.compute_layout(0.0)
+
+    fig = render_figure(coord_systems,
+                        fig_width=args.width,
+                        fig_height=args.height,
+                        font_size=args.font_size,
+                        edge_mode=args.edge,
+                        label_mode=args.label)
 
     if args.why_brown:
-        for interval in coord_sys.iter_intervals():
-            if not interval.covered or interval.color != "tab:brown":
-                continue
-            print(f"[{interval.start:#x}, {interval.end:#x}):")
-            for cap in interval.covering:
-                perms = ("R" +
-                        ("W" if cap.perm_store   else "") +
-                        ("X" if cap.perm_execute else ""))
-                flags  = " sealed"     if cap.sealed         else ""
-                flags += " trampoline" if cap.via_trampoline else ""
-                print(f"  [{cap.base:#x}, {cap.top:#x}) {perms}{flags}")
+        for coord_sys in coord_systems:
+            for interval in coord_sys.iter_intervals():
+                if not interval.covered or interval.color != "tab:brown":
+                    continue
+                print(f"[{interval.start:#x}, {interval.end:#x}):")
+                for cap in interval.covering:
+                    perms = ("R" +
+                            ("W" if cap.perm_store   else "") +
+                            ("X" if cap.perm_execute else ""))
+                    flags  = " sealed"     if cap.sealed         else ""
+                    flags += " trampoline" if cap.via_trampoline else ""
+                    print(f"  [{cap.base:#x}, {cap.top:#x}) {perms}{flags}")
 
     if args.output:
-        fig.savefig(args.output, bbox_inches="tight", transparent=True)
+        fig.savefig(args.output, bbox_inches="tight", transparent=True, dpi=600)
         plt.close(fig)
     else:
         plt.show()

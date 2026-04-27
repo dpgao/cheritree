@@ -7,12 +7,12 @@ capabilities, colored by permission type.
 ## Usage
 
 ```
-python3 visualize.py TRACE.json [-o OUTPUT] [options]
+python3 visualize.py TRACE1.json [TRACE2.json ...] [-o OUTPUT] [options]
 ```
 
 | Argument | Description |
 |---|---|
-| `TRACE.json` | JSON file containing top-level `mappings` and `capabilities` arrays. |
+| `TRACE*.json` | One or more JSON files containing top-level `mappings` and `capabilities` arrays. |
 | `-o OUTPUT` | Output file.  If omitted, an interactive window is shown. |
 | `-W INCHES` | Figure width in inches (default: 3.25). |
 | `-H INCHES` | Height of the colored rectangle in inches (default: 0.5). |
@@ -28,6 +28,11 @@ stripped library name (for example, `libc` becomes `c`), and each library into
 contiguous `Compart` objects by sub-library name. Compartment labels have the
 form `library[:sub-library]`.
 
+When multiple traces are given, the plots are stacked vertically in one figure.
+The mappings from the first trace define the shared horizontal layout for every
+plot, and the displayed compartments are the union of those reachable in any
+input trace unless `--all-mappings` is used.
+
 ### Examples
 
 ```sh
@@ -39,4 +44,7 @@ python3 visualize.py trace.json -o figure.pdf --edge=library --label=library
 
 # PGF for LaTeX inclusion
 python3 visualize.py trace.json -o figure.pgf --edge=compart --label=compart
+
+# Stack two traces using the first trace's mapping layout
+python3 visualize.py trace-a.json trace-b.json -o figure.pdf --label=no
 ```
