@@ -5,7 +5,7 @@
  *  Copyright (c) 2026, Dapeng Gao.
  */
 
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/elf_common.h>
 
 #include <fcntl.h>
@@ -218,10 +218,11 @@ const std::string *image_t::find_compart(addr_t start, addr_t end) const
 {
     auto it = std::upper_bound(comparts.begin(), comparts.end(), start,
         [](addr_t value, const compart_t &compart) {
-            return value < compart.start;
+            return value < rounddown2(compart.start, PAGE_SIZE);
         });
 
-    if (it != comparts.begin() && end <= (--it)->end)
+    if (it != comparts.begin() &&
+        end <= roundup2((--it)->end, PAGE_SIZE))
         return &it->name;
 
     return NULL;
