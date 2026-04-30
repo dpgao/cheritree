@@ -509,6 +509,45 @@ def collect_visible_comparts(coord_systems):
     return visible_comparts
 
 
+def print_interval_stats(coord_sys):
+    perm_labels = {
+        (False, False): "R",
+        (True,  False): "RW",
+        (False, True):  "RX",
+        (True,  True):  "RWX",
+    }
+    subcategories = ("unsealed", "sealed", "via trampoline")
+    totals = {label: 0 for label in perm_labels.values()}
+    by_subcategory = {
+        label: {subcategory: 0 for subcategory in subcategories}
+        for label in perm_labels.values()
+    }
+    total = 0
+
+    for interval in coord_sys.iter_intervals():
+        if not interval.covered:
+            continue
+
+        width = interval.end - interval.start
+        perm = perm_labels[(interval.has_store, interval.has_execute)]
+        if interval.all_trampoline:
+            subcategory = "via trampoline"
+        elif interval.all_sealed:
+            subcategory = "sealed"
+        else:
+            subcategory = "unsealed"
+
+        total += width
+        totals[perm] += width
+        by_subcategory[perm][subcategory] += width
+
+    print(f"Total: {total}")
+    for perm in perm_labels.values():
+        print(f" {perm}: {totals[perm]}")
+        for subcategory in subcategories:
+            print(f"  {perm} {subcategory}: {by_subcategory[perm][subcategory]}")
+
+
 def render_figure(coord_systems, fig_width, fig_height, font_size,
                   edge_mode, label_mode, label_rotation):
     plt.rcParams.update({
@@ -572,6 +611,9 @@ def parse_args():
     parser.add_argument("--why-brown", action="store_true",
                         help="For each RWX (brown) interval, print the "
                              "covering capabilities.")
+    parser.add_argument("--stats", action="store_true",
+                        help="Print interval sizes by permission category "
+                             "instead of plotting.")
     parser.add_argument("--mask-prot", action="store_true",
                         help="AND capability permissions with the underlying "
                              "mapping's protection bits.")
@@ -610,17 +652,6 @@ def main():
         for coord_sys in coord_systems:
             coord_sys.filter_comparts(visible_comparts)
 
-    for coord_sys in coord_systems:
-        coord_sys.compute_layout(0.0)
-
-    fig = render_figure(coord_systems,
-                        fig_width=args.width,
-                        fig_height=args.height,
-                        font_size=args.font_size,
-                        edge_mode=args.edge,
-                        label_mode=args.label,
-                        label_rotation=args.label_rotation)
-
     if args.why_brown:
         for coord_sys in coord_systems:
             for interval in coord_sys.iter_intervals():
@@ -634,6 +665,26 @@ def main():
                     flags  = " sealed"     if cap.sealed         else ""
                     flags += " trampoline" if cap.via_trampoline else ""
                     print(f"  [{cap.base:#x}, {cap.top:#x}) {perms}{flags}")
+
+    if args.stats:
+        for index, (trace_path, coord_sys) in enumerate(zip(args.traces, coord_systems)):
+            if index > 0:
+                print()
+            if len(coord_systems) > 1:
+                print(f"{trace_path}:")
+            print_interval_stats(coord_sys)
+        return
+
+    for coord_sys in coord_systems:
+        coord_sys.compute_layout(0.0)
+
+    fig = render_figure(coord_systems,
+                        fig_width=args.width,
+                        fig_height=args.height,
+                        font_size=args.font_size,
+                        edge_mode=args.edge,
+                        label_mode=args.label,
+                        label_rotation=args.label_rotation)
 
     if args.output:
         fig.savefig(args.output)
