@@ -14,14 +14,14 @@ python3 visualize.py TRACE1.json [TRACE2.json ...] [-o OUTPUT] [options]
 |---|---|
 | `TRACE*.json` | One or more JSON files containing top-level `mappings` and `capabilities` arrays. |
 | `-o OUTPUT` | Output file.  If omitted, an interactive window is shown. |
-| `-W INCHES` | Figure width in inches (default: 3.25). |
-| `-H INCHES` | Height of the colored rectangle in inches (default: 0.5). |
-| `-f PT` | Font size in points (default: 9). |
-| `--label-rotation DEG` | Label rotation in degrees (default: 45). Use `0` to center labels horizontally. |
+| `-W INCHES` | Figure width in inches. |
+| `-H INCHES` | Height of the colored rectangle in inches. |
+| `-f PT` | Font size in points. |
+| `--label-rotation DEG` | Label rotation in degrees. Use `0` to center labels horizontally. |
 | `--why-brown` | For each RWX (brown) interval, print the covering capabilities. |
 | `--mask-prot` | AND capability permissions with the mapping's protection bits. |
 | `--all-mappings` | Show all mappings, even those unreachable from any capability. |
-| `--edge {no,library,compart}` | Draw vertical edges for no groups, per library, or per compartment (default: `compart`). |
+| `--edge {no,library,compart}` | Draw vertical edges for no groups, per library, or per compartment. |
 | `--label {no,library,compart}` | Draw labels for no groups, per library, or per compartment. If labels are more granular than edges, they are reduced to match. |
 
 The visualizer groups sorted mappings into contiguous `Library` objects by

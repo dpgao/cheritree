@@ -17,6 +17,10 @@ from enum import IntEnum
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch, Rectangle
 
+ALPHA = 0.75
+LINE_WIDTH = 0.5
+HATCH_STYLE = "//////////"
+
 
 class Mode(IntEnum):
     NO = 0
@@ -147,12 +151,10 @@ class Interval(Segment):
         LegendSet.mark(self)
 
         ax.add_patch(Rectangle((self.x0, 0), self.x1 - self.x0, rect_h,
-                               facecolor=self.color,
-                               edgecolor="none",
-                               alpha=0.75))
-        if self.all_sealed:
-            ax.add_patch(Rectangle((self.x0, 0), self.x1 - self.x0, rect_h,
-                                   facecolor="none", hatch="////"))
+                                facecolor=self.color,
+                                edgecolor="none",
+                                alpha=ALPHA,
+                                hatch=HATCH_STYLE if self.all_sealed else None))
 
     def iter_intervals(self):
         yield self
@@ -169,17 +171,24 @@ class LegendSet:
 
     _ENTRIES = {
         (False, False): [Patch(facecolor="tab:green",
-                               label="R", alpha=0.75), False],
+                               label="R",
+                               alpha=ALPHA), False],
         (True,  False): [Patch(facecolor="tab:red",
-                               label="RW", alpha=0.75), False],
+                               label="RW",
+                               alpha=ALPHA), False],
         (False, True):  [Patch(facecolor="tab:blue",
-                               label="RX", alpha=0.75), False],
+                               label="RX",
+                               alpha=ALPHA), False],
         (True,  True):  [Patch(facecolor="tab:brown",
-                               label="RWX", alpha=0.75), False],
+                               label="RWX",
+                               alpha=ALPHA), False],
         "trampoline":   [Patch(facecolor="tab:cyan",
-                               label="Via Trampoline", alpha=0.75), False],
+                               label="Via Trampoline",
+                               alpha=ALPHA), False],
         "sealed":       [Patch(facecolor="white", edgecolor="black",
-                               hatch="////", label="Sealed"), False],
+                               hatch=HATCH_STYLE,
+                               label="Sealed",
+                               linewidth=LINE_WIDTH), False],
     }
 
     @staticmethod
@@ -282,7 +291,7 @@ def draw_bracket_label(ax, x0, x1, text, bracket_y, tick_h, label_y,
     x_center = (x0 + x1) / 2
     ax.plot([x0, x0, x1, x1],
             [bracket_y, bracket_y - tick_h, bracket_y - tick_h, bracket_y],
-            color="black", linewidth=1.0, clip_on=False)
+            color="black", clip_on=False)
     if label_rotation == 0:
         ax.text(x_center, label_y, text, ha="center", va="top")
     else:
@@ -348,17 +357,18 @@ class Library(Segment):
         return self.comparts
 
     def add_mapping(self, mapping, compart_name):
-        if not compart_name or not self.comparts or self.comparts[-1].name != compart_name:
+        if (not compart_name or
+            not self.comparts or self.comparts[-1].name != compart_name):
             self.comparts.append(Compart(library=self, name=compart_name))
         self.comparts[-1].mappings.append(mapping)
 
     def draw_edges(self, ax, fig_height, edge_mode, trailing):
         if edge_mode >= Mode.LIBRARY:
             ax.plot([self.x0, self.x0], [0, fig_height],
-                    color="black", linewidth=1.0, clip_on=False)
+                    color="black", clip_on=False)
             if trailing:
                 ax.plot([self.x1, self.x1], [0, fig_height],
-                        color="black", linewidth=1.0, clip_on=False)
+                        color="black", clip_on=False)
 
         if edge_mode == Mode.COMPART:
             for i in range(1, len(self.comparts)):
@@ -366,7 +376,7 @@ class Library(Segment):
                     continue
                 ax.plot([self.comparts[i].x0, self.comparts[i].x0],
                         [0, fig_height],
-                        color="black", linewidth=1.0, clip_on=False)
+                        color="black", clip_on=False)
 
     def draw_labels(self, ax, bracket_y, tick_h, label_y,
                     label_mode, label_rotation):
@@ -406,7 +416,7 @@ def split_mapping_name(name):
         stem = stem[3:]
     if stem.startswith("private"):
         stem = stem[7:]
-    stem = re.sub(r"\.so(?:\.[\w.]+)?$", "", stem)
+    stem = re.sub(r"\.so(?:\.\d+)*", "", stem)
     return stem, compart
 
 
@@ -417,7 +427,8 @@ class CoordSystem(Segment):
         self.libraries = []
         for mapping in mappings:
             library_name, compart_name = split_mapping_name(mapping.name)
-            if not library_name or not self.libraries or self.libraries[-1].name != library_name:
+            if (not library_name or
+                not self.libraries or self.libraries[-1].name != library_name):
                 self.libraries.append(Library(name=library_name))
             self.libraries[-1].add_mapping(mapping, compart_name)
 
@@ -440,16 +451,16 @@ class CoordSystem(Segment):
     def draw_outline(self, ax, rect_h):
         """Draw the top and bottom edges of the address-space box."""
         ax.plot([self.x0, self.x1], [0, 0],
-                color="black", linewidth=1.0, clip_on=False)
+                color="black", clip_on=False)
         ax.plot([self.x0, self.x1], [rect_h, rect_h],
-                color="black", linewidth=1.0, clip_on=False)
+                color="black", clip_on=False)
 
     def draw_sides(self, ax, rect_h):
         """Draw the left and right edges of the address-space box."""
         ax.plot([self.x0, self.x0], [0, rect_h],
-                color="black", linewidth=1.0, clip_on=False)
+                color="black", clip_on=False)
         ax.plot([self.x1, self.x1], [0, rect_h],
-                color="black", linewidth=1.0, clip_on=False)
+                color="black", clip_on=False)
 
     def draw(self, ax, rect_h, edge_mode, label_mode, label_rotation):
         bracket_y = -0.025
@@ -501,50 +512,40 @@ def collect_visible_comparts(coord_systems):
 def render_figure(coord_systems, fig_width, fig_height, font_size,
                   edge_mode, label_mode, label_rotation):
     plt.rcParams.update({
-        "font.family": "serif",
-        "font.serif": ["Linux Libertine", "Times"],
+        "text.usetex": True,
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Helvetica"],
         "font.size": font_size,
-        "hatch.linewidth": 0.5,
+        "legend.borderpad": 1/8,
+        "legend.borderaxespad": 0.0,
+        "lines.linewidth": LINE_WIDTH,
+        "hatch.linewidth": LINE_WIDTH,
+        "savefig.transparent": True,
+        "savefig.bbox": "tight",
+        "savefig.pad_inches": 1/128
     })
 
     LegendSet.reset()
 
-    height_ratios = []
-    for index in range(len(coord_systems)):
-        axis_height = fig_height
-        if index == 0:
-            axis_height += 0.5
-        if index + 1 == len(coord_systems) and label_mode > Mode.NO:
-            axis_height += 1.0
-        height_ratios.append(axis_height)
-
     fig, axes = plt.subplots(len(coord_systems), 1,
-                             figsize=(fig_width, sum(height_ratios)),
-                             squeeze=False,
-                             gridspec_kw={"height_ratios": height_ratios,
-                                          "hspace": 0.0})
+                             figsize=(fig_width, len(coord_systems) * fig_height),
+                             squeeze=False)
     axes = [axis[0] for axis in axes]
 
     for index, (ax, coord_sys) in enumerate(zip(axes, coord_systems)):
         current_label_mode = label_mode if index + 1 == len(coord_systems) else Mode.NO
-        y_lo = -1.0 if current_label_mode > Mode.NO else 0.0
-        y_hi = fig_height + 0.5 if index == 0 else fig_height
 
         coord_sys.draw(ax, fig_height,
                        edge_mode, current_label_mode, label_rotation)
 
-        ax.set_xlim(coord_systems[0].x0, coord_systems[0].x1)
-        ax.set_ylim(y_lo, y_hi)
+        ax.set_xlim(coord_sys.x0, coord_sys.x1)
+        ax.set_ylim(0, fig_height)
         ax.set_aspect("auto")
         ax.axis("off")
 
-    top_y_lo = -1.0 if len(coord_systems) == 1 and label_mode > Mode.NO else 0.0
-    top_y_hi = fig_height + 0.5
-    rect_top_frac = (fig_height + 0.125 - top_y_lo) / (top_y_hi - top_y_lo)
-    axes[0].legend(handles=LegendSet.handles(), loc="lower left",
-                   bbox_to_anchor=(0, rect_top_frac), ncol=3,
-                   columnspacing=0.75, borderpad=0.25, labelspacing=0.25,
-                   handletextpad=0.5, borderaxespad=0.0)
+    fig.legend(handles=LegendSet.handles(),
+               loc="lower center", bbox_to_anchor=(0.5, 1.0),
+               ncol=6)
 
     return fig
 
@@ -558,13 +559,13 @@ def parse_args():
     parser.add_argument("-o", "--output",
                         help="Output file. "
                              "If omitted, show an interactive window.")
-    parser.add_argument("-W", "--width", type=float, default=3.25,
+    parser.add_argument("-W", "--width", type=float, default=9,
                         metavar="INCHES",
-                        help="Figure width in inches (default: 3.25).")
-    parser.add_argument("-H", "--height", type=float, default=0.5,
+                        help="Figure width in inches (default: 9).")
+    parser.add_argument("-H", "--height", type=float, default=0.125,
                         metavar="INCHES",
                         help="Height of the address-space rectangle in inches "
-                             "(default: 0.5).")
+                             "(default: 0.125).")
     parser.add_argument("-f", "--font-size", type=float, default=9,
                         metavar="PT",
                         help="Font size in points (default: 9).")
@@ -582,9 +583,9 @@ def parse_args():
     parser.add_argument("--label", choices=Mode.choices(), default="compart",
                         help="Label granularity: none, per library, or per "
                              "compartment (default: compart).")
-    parser.add_argument("--label-rotation", type=float, default=45,
+    parser.add_argument("--label-rotation", type=float, default=18,
                         metavar="DEG",
-                        help="Label rotation in degrees (default: 45). "
+                        help="Label rotation in degrees (default: 18). "
                              "Use 0 to center labels horizontally.")
     args = parser.parse_args()
     args.edge = Mode.parse(args.edge)
@@ -635,8 +636,7 @@ def main():
                     print(f"  [{cap.base:#x}, {cap.top:#x}) {perms}{flags}")
 
     if args.output:
-        fig.savefig(args.output, bbox_inches="tight", transparent=True, dpi=600)
-        plt.close(fig)
+        fig.savefig(args.output)
     else:
         plt.show()
 
